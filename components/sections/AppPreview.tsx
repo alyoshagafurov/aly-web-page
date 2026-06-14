@@ -5,22 +5,23 @@ import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
 import Phone from "@/components/app/Phone";
-import AppScreen, { type ScreenVariant } from "@/components/app/AppScreen";
+import { useLang } from "@/lib/i18n";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
 
-const screens: { v: ScreenVariant; label: string }[] = [
-  { v: "balance", label: "Home" },
-  { v: "money", label: "Money" },
-  { v: "wisdom", label: "Mind" },
-  { v: "reader", label: "Reading" },
-  { v: "ideas", label: "Ideas" },
-  { v: "focus", label: "Focus" },
-];
-
 export default function AppPreview() {
+  const { t } = useLang();
   const root = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
+
+  const screens = [
+    { shot: "home", label: t("Home", "Главная") },
+    { shot: "money", label: t("Money", "Деньги") },
+    { shot: "mind", label: "Mind" },
+    { shot: "reader", label: t("Reading", "Чтение") },
+    { shot: "ideas", label: t("Ideas", "Идеи") },
+    { shot: "stoicism", label: t("Stoicism", "Стоицизм") },
+  ];
 
   useGSAP(
     () => {
@@ -33,18 +34,11 @@ export default function AppPreview() {
         gsap.to(el, {
           x: () => -distance(),
           ease: "none",
-          scrollTrigger: {
-            trigger: sec,
-            start: "top top",
-            end: () => "+=" + distance(),
-            pin: true,
-            scrub: 1,
-            invalidateOnRefresh: true,
-          },
+          scrollTrigger: { trigger: sec, start: "top top", end: () => "+=" + distance(), pin: true, scrub: 1, invalidateOnRefresh: true },
         });
       });
     },
-    { scope: root }
+    { scope: root, dependencies: [] }
   );
 
   return (
@@ -54,32 +48,29 @@ export default function AppPreview() {
           ref={track}
           className="no-scrollbar flex snap-x snap-mandatory items-center gap-8 overflow-x-auto px-6 lg:snap-none lg:gap-12 lg:overflow-visible lg:px-0 lg:pl-[8vw]"
         >
-          {/* intro panel */}
           <div className="flex min-w-[78vw] shrink-0 flex-col justify-center sm:min-w-[60vw] lg:min-w-[40vw] lg:pr-10">
-            <p className="font-mono text-[12px] uppercase tracking-[0.25em] text-white/35">Preview</p>
+            <p className="font-mono text-[12px] uppercase tracking-[0.25em] text-white/35">{t("Preview", "Экраны")}</p>
             <h2 className="display mt-5 text-[clamp(2.4rem,5.5vw,4.4rem)] font-semibold">
-              Every screen,
+              {t("Every screen,", "Каждый экран")}
               <br />
-              considered.
+              {t("considered.", "продуман.")}
             </h2>
             <p className="mt-6 max-w-sm text-[16px] leading-relaxed text-white/45">
-              Five surfaces. One language. Drag to explore the whole experience.
+              {t("Six surfaces. One language. Drag to explore the whole experience.", "Шесть экранов. Один язык. Листай, чтобы увидеть всё.")}
             </p>
           </div>
 
-          {/* phones */}
           {screens.map((s) => (
-            <div key={s.v} className="shrink-0 snap-center">
+            <div key={s.shot} className="shrink-0 snap-center">
               <div className="glass rounded-[2.4rem] p-4">
                 <div className="w-[210px] sm:w-[240px]">
                   <Phone>
-                    <AppScreen variant={s.v} />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`/shots/${s.shot}.png`} alt={s.label} className="h-full w-full object-cover" loading="lazy" />
                   </Phone>
                 </div>
               </div>
-              <p className="mt-5 text-center font-mono text-[12px] uppercase tracking-[0.2em] text-white/35">
-                {s.label}
-              </p>
+              <p className="mt-5 text-center font-mono text-[12px] uppercase tracking-[0.2em] text-white/35">{s.label}</p>
             </div>
           ))}
 
