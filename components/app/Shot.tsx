@@ -16,7 +16,7 @@ export default function Shot({
     <Phone glow={glow} className={className}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={`/shots/${name}.png`}
+        src={`/shots/${name}.webp`}
         alt={`aly — ${name} screen`}
         className="h-full w-full object-cover"
         loading={priority ? "eager" : "lazy"}

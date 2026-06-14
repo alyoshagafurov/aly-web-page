@@ -66,7 +66,7 @@ export default function AppPreview() {
                 <div className="w-[210px] sm:w-[240px]">
                   <Phone>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={`/shots/${s.shot}.png`} alt={s.label} className="h-full w-full object-cover" loading="lazy" />
+                    <img src={`/shots/${s.shot}.webp`} alt={s.label} className="h-full w-full object-cover" loading="lazy" />
                   </Phone>
                 </div>
               </div>

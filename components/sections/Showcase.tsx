@@ -72,7 +72,7 @@ export default function Showcase() {
                     className={i === 0 ? "relative h-full w-full" : "absolute inset-0 hidden lg:block"}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={`/shots/${it.shot}.png`} alt={it.label} className="h-full w-full object-cover" loading="lazy" />
+                    <img src={`/shots/${it.shot}.webp`} alt={it.label} className="h-full w-full object-cover" loading="lazy" />
                   </div>
                 ))}
               </div>
