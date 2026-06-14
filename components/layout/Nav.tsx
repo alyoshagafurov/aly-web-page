@@ -68,8 +68,8 @@ export default function Nav() {
               </button>
             ))}
           </div>
-          <MagneticButton href="#cta" className="px-5 py-2.5 text-[14px]" strength={0.25}>
-            {t("Download", "Скачать")}
+          <MagneticButton href="/app" className="px-5 py-2.5 text-[14px]" strength={0.25}>
+            {t("Open app", "Открыть")}
           </MagneticButton>
         </div>
       </nav>

@@ -60,10 +60,10 @@ export default function Hero() {
           </motion.p>
 
           <motion.div variants={item} className="mt-9 flex items-center justify-center gap-3 lg:justify-start">
-            <MagneticButton href="#cta">
-              {t("Download", "Скачать")}
+            <MagneticButton href="/app">
+              {t("Open app", "Открыть")}
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" className="opacity-70">
-                <path d="M12 4v12m0 0l-5-5m5 5l5-5M5 20h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </MagneticButton>
             <MagneticButton href="#showcase" variant="ghost" strength={0.2}>
