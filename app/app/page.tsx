@@ -1,51 +1,41 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
   useTxns, useIdeas, useGoal, useFocus, useDayLog, useSettings,
-  balance, monthIncome, todayIncome, topSources, weekSeries, formatMoney,
-  type Txn, type Idea,
+  balance, monthIncome, todayIncome, topSources, periodSeries, formatMoney,
+  type Txn, type Idea, type Range,
 } from "@/lib/store";
-
-// ── icons (inline SVG) ──
-const Icons = {
-  home: <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M12 3l9 8h-3v10h-5v-6H11v6H6V11H3l9-8z"/></svg>,
-  money: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5"><path d="M3 17l4-4 4 4 4-6 6 3" strokeLinecap="round" strokeLinejoin="round"/><path d="M3 21h18" strokeLinecap="round"/></svg>,
-  ideas: <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M12 2a7 7 0 00-4 12.7V17a1 1 0 001 1h6a1 1 0 001-1v-2.3A7 7 0 0012 2zM9 20h6v1a1 1 0 01-1 1h-4a1 1 0 01-1-1v-1z"/></svg>,
-  mind: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/><path d="M12 8v4l3 3"/></svg>,
-  settings: <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M12 15.5A3.5 3.5 0 1012 8.5a3.5 3.5 0 000 7zm7.43-2.53c.04-.32.07-.64.07-.97s-.03-.66-.07-.97l2.11-1.65a.5.5 0 00.12-.64l-2-3.46a.5.5 0 00-.61-.22l-2.49 1a7.3 7.3 0 00-1.67-.97l-.38-2.65A.49.49 0 0014 2h-4a.49.49 0 00-.49.42l-.38 2.65c-.61.25-1.17.59-1.67.97l-2.49-1a.5.5 0 00-.61.22l-2 3.46a.49.49 0 00.12.64l2.11 1.65c-.04.32-.07.65-.07.97s.03.66.07.97l-2.11 1.65a.5.5 0 00-.12.64l2 3.46a.5.5 0 00.61.22l2.49-1c.5.38 1.06.72 1.67.97l.38 2.65c.05.24.26.42.49.42h4c.24 0 .44-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.67-.97l2.49 1a.5.5 0 00.61-.22l2-3.46a.49.49 0 00-.12-.64l-2.11-1.65z"/></svg>,
-  plus: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5"><path d="M12 5v14M5 12h14" strokeLinecap="round"/></svg>,
-  check: <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>,
-  circle: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5"><circle cx="12" cy="12" r="9"/></svg>,
-  close: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path d="M18 6L6 18M6 6l12 12" strokeLinecap="round"/></svg>,
-  flame: <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M12 23c-3.9 0-7-3.1-7-7 0-3.2 2.8-6.4 4.5-8l1.5-1.5 1.5 1.5c1.7 1.6 4.5 4.8 4.5 8 0 3.9-3.1 7-7 7zm0-13.5C10.5 11 7 14 7 16c0 2.8 2.2 5 5 5s5-2.2 5-5c0-2-3.5-5-5-6.5z"/></svg>,
-  trash: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4"><path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2m2 0v14a1 1 0 01-1 1H7a1 1 0 01-1-1V6h12z" strokeLinecap="round"/></svg>,
-  pin: <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3 opacity-40"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5v6l1 1 1-1v-6h5v-2l-2-2z"/></svg>,
-};
+import { Card, Sheet, ProgressRing, LineChart, CatIcon, t } from "@/components/pwa/ui";
+import Mind from "@/components/pwa/Mind";
 
 type Tab = "home" | "money" | "ideas" | "mind" | "settings";
 
-const categories = [
-  { id: "business" as const, label: "Business", ru: "Бизнес", icon: "💼" },
-  { id: "website" as const, label: "Websites", ru: "Сайты", icon: "🌐" },
-  { id: "ai" as const, label: "AI / Bots", ru: "AI / Боты", icon: "✦" },
-  { id: "thought" as const, label: "Thoughts", ru: "Мысли", icon: "◯" },
+const ideaCats = [
+  { id: "business" as const, en: "Business", ru: "Бизнес", icon: "💼" },
+  { id: "website" as const, en: "Websites", ru: "Сайты", icon: "🌐" },
+  { id: "ai" as const, en: "AI / Bots", ru: "AI / Боты", icon: "✦" },
+  { id: "thought" as const, en: "Thoughts", ru: "Мысли", icon: "◌" },
 ];
-
 const currencies = ["USD", "EUR", "RUB", "GBP", "UAH", "KZT", "TRY", "AED"];
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ROOT
 export default function AppPage() {
-  const [tab, setTab] = useState<Tab>("home");
   const { settings, completeOnboarding } = useSettings();
-  const [onboarding, setOnboarding] = useState(!settings.onboarded);
+  const [tab, setTab] = useState<Tab>("home");
+  const [splash, setSplash] = useState(true);
+  const [onboarding, setOnboarding] = useState(false);
 
   useEffect(() => {
-    setOnboarding(!settings.onboarded);
+    const tm = setTimeout(() => {
+      setSplash(false);
+      setOnboarding(!settings.onboarded);
+    }, 2050);
+    return () => clearTimeout(tm);
   }, [settings.onboarded]);
 
-  if (onboarding) {
-    return <Onboarding onDone={() => { completeOnboarding(); setOnboarding(false); }} />;
-  }
+  if (splash) return <Splash />;
+  if (onboarding) return <Onboarding lang={settings.lang} onDone={() => { completeOnboarding(); setOnboarding(false); }} />;
 
   return (
     <div className="flex flex-col h-full bg-[#0A0A0C]">
@@ -53,7 +43,7 @@ export default function AppPage() {
         {tab === "home" && <HomeTab />}
         {tab === "money" && <MoneyTab />}
         {tab === "ideas" && <IdeasTab />}
-        {tab === "mind" && <MindTab />}
+        {tab === "mind" && <Mind />}
         {tab === "settings" && <SettingsTab />}
       </div>
       <TabBar tab={tab} setTab={setTab} />
@@ -61,355 +51,276 @@ export default function AppPage() {
   );
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ONBOARDING
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-function Onboarding({ onDone }: { onDone: () => void }) {
-  const { settings } = useSettings();
-  const t = (en: string, ru: string) => settings.lang === "ru" ? ru : en;
-  const [page, setPage] = useState(0);
-
-  const pages = [
-    { icon: "📊", title: t("Track your money.", "Отслеживай деньги."), sub: t("See where every dollar goes.", "Видь, куда уходит каждый рубль.") },
-    { icon: "💡", title: t("Capture ideas.", "Сохраняй идеи."), sub: t("Before they fade.", "Пока помнишь.") },
-    { icon: "↗", title: t("Grow every day.", "Расти каждый день."), sub: t("Focus. Habits. Results.", "Фокус. Привычки. Результат.") },
-  ];
-
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ SPLASH
+function Splash() {
   return (
-    <div className="flex flex-col items-center justify-center h-full bg-black px-8">
+    <div className="flex items-center justify-center h-full bg-black">
+      <div className="splash-word text-[64px] font-semibold tracking-[-0.04em] text-white rounded-font">
+        aly<span className="splash-osha">osha</span>
+      </div>
+    </div>
+  );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ONBOARDING
+function Onboarding({ lang, onDone }: { lang: "ru" | "en"; onDone: () => void }) {
+  const [page, setPage] = useState(0);
+  const pages = [
+    { icon: "money", title: t(lang, "Track your money.", "Отслеживай деньги."), sub: t(lang, "See where every dollar goes.", "Видь, куда уходит каждый рубль.") },
+    { icon: "bulb", title: t(lang, "Capture ideas.", "Сохраняй идеи."), sub: t(lang, "Before they fade.", "Пока помнишь.") },
+    { icon: "arrow", title: t(lang, "Grow every day.", "Расти каждый день."), sub: t(lang, "Focus. Habits. Results.", "Фокус. Привычки. Результат.") },
+  ];
+  return (
+    <div className="flex flex-col items-center h-full bg-black px-8">
       <div className="flex-1" />
-      <div className="text-5xl mb-10 opacity-20">{pages[page].icon}</div>
-      <h1 className="text-2xl font-semibold tracking-tight text-center">{pages[page].title}</h1>
+      <div className="text-white/15"><CatIcon name={pages[page].icon === "money" ? "arrow" : pages[page].icon} className="w-12 h-12" /></div>
+      <h1 className="text-2xl font-semibold tracking-tight text-center mt-10 rounded-font">{pages[page].title}</h1>
       <p className="mt-3 text-white/40 text-center">{pages[page].sub}</p>
       <div className="flex gap-2 mt-10">
-        {pages.map((_, i) => (
-          <div key={i} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === page ? "bg-white" : "bg-white/20"}`} />
-        ))}
+        {pages.map((_, i) => <div key={i} className={`h-1.5 rounded-full transition-all ${i === page ? "w-1.5 bg-white" : "w-1.5 bg-white/20"}`} />)}
       </div>
       <div className="flex-1" />
-      <button
-        onClick={() => page < 2 ? setPage(page + 1) : onDone()}
-        className="w-full py-4 bg-white text-black font-semibold rounded-2xl mb-16 active:scale-[0.98] transition-transform"
-      >
-        {page === 2 ? t("Begin", "Начать") : t("Next", "Дальше")}
+      <button onClick={() => (page < 2 ? setPage(page + 1) : onDone())}
+        className="w-full py-4 bg-white text-black font-semibold rounded-2xl mb-14 active:scale-[0.98] transition-transform">
+        {page === 2 ? t(lang, "Begin", "Начать") : t(lang, "Next", "Дальше")}
       </button>
     </div>
   );
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// TAB BAR
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ TAB BAR
 function TabBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
   const { settings } = useSettings();
-  const t = (en: string, ru: string) => settings.lang === "ru" ? ru : en;
-  const tabs: { id: Tab; icon: React.ReactNode; label: string }[] = [
-    { id: "home", icon: Icons.home, label: t("Home", "Главная") },
-    { id: "money", icon: Icons.money, label: t("Money", "Деньги") },
-    { id: "ideas", icon: Icons.ideas, label: t("Ideas", "Идеи") },
-    { id: "mind", icon: Icons.mind, label: "Mind" },
-    { id: "settings", icon: Icons.settings, label: t("More", "Ещё") },
+  const lang = settings.lang;
+  const items: { id: Tab; icon: React.ReactNode; label: string }[] = [
+    { id: "home", icon: <HomeIcon />, label: t(lang, "Home", "Главная") },
+    { id: "money", icon: <CatIcon name="arrow" className="w-[22px] h-[22px]" />, label: t(lang, "Money", "Деньги") },
+    { id: "ideas", icon: <CatIcon name="bulb" className="w-[22px] h-[22px]" />, label: t(lang, "Ideas", "Идеи") },
+    { id: "mind", icon: <CatIcon name="brain" className="w-[22px] h-[22px]" />, label: "Mind" },
+    { id: "settings", icon: <GearIcon />, label: t(lang, "More", "Ещё") },
   ];
-
   return (
-    <nav className="flex items-center justify-around border-t border-white/[0.07] bg-[#0A0A0C] pb-[env(safe-area-inset-bottom)] pt-2 px-2">
-      {tabs.map((tb) => (
-        <button
-          key={tb.id}
-          onClick={() => setTab(tb.id)}
-          className={`flex flex-col items-center gap-0.5 py-1 px-3 transition-colors ${tab === tb.id ? "text-white" : "text-white/30"}`}
-        >
-          {tb.icon}
-          <span className="text-[10px] font-medium">{tb.label}</span>
+    <nav className="flex items-center justify-around border-t border-white/[0.07] bg-[#0A0A0C]/95 backdrop-blur pb-[max(env(safe-area-inset-bottom),8px)] pt-2 px-1">
+      {items.map((it) => (
+        <button key={it.id} onClick={() => setTab(it.id)}
+          className={`flex flex-col items-center gap-1 py-1 px-3 transition-colors ${tab === it.id ? "text-white" : "text-white/30"}`}>
+          {it.icon}
+          <span className="text-[10px] font-medium rounded-font">{it.label}</span>
         </button>
       ))}
     </nav>
   );
 }
+const HomeIcon = () => <svg viewBox="0 0 24 24" className="w-[22px] h-[22px]" fill="currentColor"><path d="M12 3l9 8h-2.5v9h-5v-6h-3v6h-5v-9H3l9-8z" /></svg>;
+const GearIcon = () => <svg viewBox="0 0 24 24" className="w-[22px] h-[22px]" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="3.2" /><path d="M19 12a7 7 0 00-.1-1.3l2-1.5-2-3.4-2.3.9a7 7 0 00-2.3-1.3L13.7 2h-3.4l-.3 2.4a7 7 0 00-2.3 1.3L5.4 4.8l-2 3.4 2 1.5A7 7 0 005 12c0 .4 0 .9.1 1.3l-2 1.5 2 3.4 2.3-.9a7 7 0 002.3 1.3l.3 2.4h3.4l.3-2.4a7 7 0 002.3-1.3l2.3.9 2-3.4-2-1.5c.1-.4.1-.9.1-1.3z" strokeLinejoin="round" /></svg>;
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// SHARED
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-function Card({ children, className = "", onClick }: { children: React.ReactNode; className?: string; onClick?: () => void }) {
-  return (
-    <div onClick={onClick} className={`bg-[#16171D] rounded-3xl border border-white/[0.07] p-[18px] ${onClick ? "active:scale-[0.98] transition-transform cursor-pointer" : ""} ${className}`}>
-      {children}
-    </div>
-  );
-}
-
-function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg bg-[#1C1E26] rounded-t-3xl p-6 pb-10 animate-slide-up max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-semibold">{title}</h3>
-          <button onClick={onClose} className="text-white/40 p-1">{Icons.close}</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// LINE CHART
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-function LineChart({ data, labels }: { data: number[]; labels: string[] }) {
-  const cum = data.reduce<number[]>((acc, v) => [...acc, (acc[acc.length - 1] || 0) + v], []);
-  const max = Math.max(...cum, 1);
-  const hasData = cum.some((v) => v > 0);
-
-  const W = 320, H = 140, PAD = 16;
-  const usableH = H - PAD * 2;
-
-  const pts = cum.map((v, i) => ({
-    x: cum.length === 1 ? W / 2 : (W * i) / (cum.length - 1),
-    y: PAD + usableH - (v / max) * usableH,
-  }));
-
-  const path = pts.length < 2 ? "" : pts.reduce((d, p, i) => {
-    if (i === 0) return `M${p.x},${p.y}`;
-    const p0 = pts[i - 1];
-    const prev = pts[i - 2] || p0;
-    const next = pts[i + 1] || p;
-    const t = 5;
-    const c1x = p0.x + (p.x - prev.x) / t;
-    const c1y = p0.y + (p.y - prev.y) / t;
-    const c2x = p.x - (next.x - p0.x) / t;
-    const c2y = p.y - (next.y - p0.y) / t;
-    return `${d} C${c1x},${c1y} ${c2x},${c2y} ${p.x},${p.y}`;
-  }, "");
-
-  const sampled = labels.length > 6
-    ? Array.from({ length: 6 }, (_, i) => labels[Math.round(i * (labels.length - 1) / 5)])
-    : labels;
-
-  return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
-        {[0, 1, 2].map((i) => (
-          <line key={i} x1="0" y1={PAD + usableH * i / 2} x2={W} y2={PAD + usableH * i / 2} stroke="white" strokeOpacity="0.035" strokeWidth="0.5" />
-        ))}
-        {hasData ? (
-          <>
-            <path d={path} fill="none" stroke="white" strokeOpacity="0.85" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            {pts.length > 0 && (
-              <>
-                <circle cx={pts[pts.length - 1].x} cy={pts[pts.length - 1].y} r="7" fill="white" fillOpacity="0.06" />
-                <circle cx={pts[pts.length - 1].x} cy={pts[pts.length - 1].y} r="2.5" fill="white" />
-              </>
-            )}
-          </>
-        ) : (
-          <path d={`M${W * 0.15},${H * 0.65} Q${W * 0.5},${H * 0.35} ${W * 0.85},${H * 0.45}`} fill="none" stroke="white" strokeOpacity="0.06" strokeWidth="1.5" strokeDasharray="6 8" strokeLinecap="round" />
-        )}
-      </svg>
-      {sampled.length > 0 && (
-        <div className="flex justify-between mt-2 px-1">
-          {sampled.map((l, i) => <span key={i} className="text-[10px] text-white/20 font-medium">{l}</span>)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// HOME TAB
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ HOME
 function HomeTab() {
   const { settings } = useSettings();
-  const t = (en: string, ru: string) => settings.lang === "ru" ? ru : en;
-  const { txns, add: addTxn } = useTxns();
-  const { goal, setGoal } = useGoal();
+  const lang = settings.lang;
+  const { txns } = useTxns();
+  const { goal } = useGoal();
   const { tasks, setText, toggle } = useFocus();
   const { productive, setProductive, streak } = useDayLog();
-  const [showAdd, setShowAdd] = useState(false);
-  const [addIncome, setAddIncome] = useState(true);
+  const [add, setAdd] = useState<null | boolean>(null);
   const [showGoal, setShowGoal] = useState(false);
+  const [showReport, setShowReport] = useState(false);
 
-  const bal = balance(txns);
-  const mi = monthIncome(txns);
-  const ti = todayIncome(txns);
   const fm = (v: number, plus = false) => formatMoney(v, settings.currency, plus);
-
+  const bal = balance(txns), mi = monthIncome(txns), ti = todayIncome(txns);
   const hour = new Date().getHours();
-  const greeting = hour >= 5 && hour < 12 ? t("Good morning", "Доброе утро")
-    : hour < 17 ? t("Good afternoon", "Добрый день")
-    : hour < 23 ? t("Good evening", "Добрый вечер")
-    : t("Good night", "Доброй ночи");
-
-  const doneTasks = tasks.filter((t) => t.text && t.done).length;
-  const totalTasks = tasks.filter((t) => t.text).length;
+  const greeting = hour >= 5 && hour < 12 ? t(lang, "Good morning", "Доброе утро")
+    : hour < 17 ? t(lang, "Good afternoon", "Добрый день")
+    : hour < 23 ? t(lang, "Good evening", "Добрый вечер") : t(lang, "Good night", "Доброй ночи");
+  const done = tasks.filter((x) => x.text && x.done).length;
+  const total = tasks.filter((x) => x.text).length;
+  const monthName = new Date().toLocaleDateString(lang === "ru" ? "ru" : "en", { month: "long" });
 
   return (
-    <div className="px-5 pt-14 pb-6 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="px-5 pt-14 pb-6 space-y-[18px]">
+      <div className="flex items-center justify-between pt-2">
         <div>
-          <h1 className="text-xl font-bold">{greeting}</h1>
-          <p className="text-sm text-white/40">{new Date().toLocaleDateString(settings.lang === "ru" ? "ru" : "en", { day: "numeric", month: "short" })}</p>
+          <h1 className="text-[22px] font-bold rounded-font">{greeting}</h1>
+          <p className="text-sm text-white/50">{new Date().toLocaleDateString(lang === "ru" ? "ru" : "en", { weekday: "short", day: "numeric", month: "short" })}</p>
         </div>
         {streak > 0 && (
-          <div className="flex items-center gap-1 bg-white/10 rounded-full px-3 py-1.5">
-            {Icons.flame}
-            <span className="text-sm font-bold">{streak}</span>
+          <div className="flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-2">
+            <CatIcon name="flame" className="w-4 h-4" /><span className="text-sm font-bold rounded-font">{streak}</span>
           </div>
         )}
       </div>
 
-      {/* Balance */}
+      {/* balance */}
       <Card>
-        <p className="text-xs text-white/40 font-medium">{t("Total balance", "Общий баланс")}</p>
-        {txns.length === 0 ? (
-          <p className="text-2xl font-semibold text-white/40 mt-2">{t("Ready to begin", "Готов к старту")}</p>
-        ) : (
-          <p className="text-4xl font-bold mt-2 tracking-tight">{fm(bal)}</p>
-        )}
-        <div className="flex gap-2 mt-3">
-          <div className="flex-1 bg-white/[0.04] rounded-xl px-3 py-2">
-            <p className="text-[10px] text-white/30">{t("Today", "Сегодня")}</p>
-            <p className="text-sm font-semibold">{fm(ti, ti > 0)}</p>
-          </div>
-          <div className="flex-1 bg-white/[0.04] rounded-xl px-3 py-2">
-            <p className="text-[10px] text-white/30">{t("This month", "За месяц")}</p>
-            <p className="text-sm font-semibold">{fm(mi, mi > 0)}</p>
-          </div>
+        <p className="text-[13px] text-white/50 font-medium">{t(lang, "Total balance", "Общий баланс")}</p>
+        {txns.length === 0
+          ? <p className="text-[30px] font-semibold text-white/50 mt-2 rounded-font">{t(lang, "Ready to begin", "Готов к старту")}</p>
+          : <p className="text-[44px] leading-none font-bold mt-3 tracking-tight rounded-font">{fm(bal)}</p>}
+        <div className="flex gap-2.5 mt-4">
+          <MiniStat label={t(lang, "Today", "Сегодня")} value={fm(ti, ti > 0)} />
+          <MiniStat label={t(lang, "This month", "За месяц")} value={fm(mi, mi > 0)} />
         </div>
       </Card>
 
-      {/* Goal */}
+      {/* goal */}
       <Card onClick={() => setShowGoal(true)}>
         {goal && goal.amount > 0 ? (
           <div className="flex items-center gap-4">
-            <ProgressRing progress={mi / goal.amount} size={64} />
+            <ProgressRing progress={mi / goal.amount} size={84} />
             <div>
-              <p className="text-xs text-white/40 font-medium">{t("Monthly goal", "Цель месяца")}</p>
-              <p className="text-lg font-bold">{fm(mi)} / {fm(goal.amount)}</p>
+              <p className="text-[13px] text-white/50 font-medium">{t(lang, "Monthly goal", "Цель месяца")}</p>
+              <p className="text-xl font-bold rounded-font mt-0.5">{fm(mi)} / {fm(goal.amount)}</p>
+              <p className="text-xs text-white/30 mt-0.5 capitalize">{monthName}</p>
             </div>
           </div>
         ) : (
           <div className="flex items-center gap-3">
-            <span className="text-white/40">◎</span>
-            <span className="font-medium">{t("Set a monthly goal", "Поставить цель на месяц")}</span>
-            <span className="ml-auto text-white/20 text-xs">›</span>
+            <CatIcon name="infinity" className="w-5 h-5 text-white/70" />
+            <span className="font-medium">{t(lang, "Set a monthly goal", "Поставить цель на месяц")}</span>
+            <span className="ml-auto text-white/25">›</span>
           </div>
         )}
       </Card>
 
-      {/* Quick add */}
+      {/* quick add */}
       <div className="grid grid-cols-2 gap-3">
-        <button onClick={() => { setAddIncome(true); setShowAdd(true); }} className="flex items-center justify-center gap-2 py-4 bg-white/10 rounded-2xl font-semibold active:scale-[0.97] transition-transform">
-          <span className="text-lg">+</span> {t("Income", "Доход")}
+        <button onClick={() => setAdd(true)} className="flex items-center justify-center gap-2 py-4 bg-white/10 rounded-2xl font-semibold active:scale-[0.97] transition-transform">
+          <span className="text-lg leading-none">+</span> {t(lang, "Income", "Доход")}
         </button>
-        <button onClick={() => { setAddIncome(false); setShowAdd(true); }} className="flex items-center justify-center gap-2 py-4 bg-white/[0.05] rounded-2xl font-medium text-white/50 active:scale-[0.97] transition-transform">
-          <span className="text-lg">−</span> {t("Expense", "Расход")}
+        <button onClick={() => setAdd(false)} className="flex items-center justify-center gap-2 py-4 bg-white/[0.05] rounded-2xl font-medium text-white/50 active:scale-[0.97] transition-transform">
+          <span className="text-lg leading-none">−</span> {t(lang, "Expense", "Расход")}
         </button>
       </div>
 
-      {/* Focus */}
+      {/* focus */}
       <Card>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold">{t("Today's focus", "Фокус на день")}</h3>
-          {totalTasks > 0 && <span className="text-sm text-white/40">{doneTasks}/{totalTasks}</span>}
+          <h3 className="text-[19px] font-semibold rounded-font">{t(lang, "Today's focus", "Фокус на день")}</h3>
+          {total > 0 && <span className="text-sm text-white/50 font-semibold rounded-font">{done}/{total}</span>}
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {tasks.map((task) => (
             <div key={task.id} className="flex items-center gap-3">
-              <button onClick={() => task.text && toggle(task.id)} className={task.done ? "text-white" : "text-white/20"}>
-                {task.done ? Icons.check : Icons.circle}
+              <button onClick={() => task.text && toggle(task.id)} className={task.done ? "text-white" : "text-white/25"}>
+                {task.done
+                  ? <svg viewBox="0 0 24 24" className="w-[22px] h-[22px]" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm-2 15l-5-5 1.4-1.4L10 14.2l7.6-7.6L19 8l-9 9z" /></svg>
+                  : <svg viewBox="0 0 24 24" className="w-[22px] h-[22px]" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="9" /></svg>}
               </button>
-              <input
-                value={task.text}
-                onChange={(e) => setText(task.id, e.target.value)}
-                placeholder={t("Important task…", "Важная задача…")}
-                className={`flex-1 bg-transparent outline-none placeholder:text-white/20 ${task.done ? "line-through text-white/30" : ""}`}
-              />
+              <input value={task.text} onChange={(e) => setText(task.id, e.target.value)}
+                placeholder={t(lang, "Important task…", "Важная задача…")}
+                className={`flex-1 bg-transparent outline-none placeholder:text-white/20 ${task.done ? "line-through text-white/30" : ""}`} />
             </div>
           ))}
         </div>
       </Card>
 
-      {/* Productivity */}
+      {/* productivity */}
       <Card>
-        <h3 className="text-lg font-semibold mb-3">{t("How was your day?", "Как прошёл день?")}</h3>
+        <h3 className="text-[19px] font-semibold rounded-font mb-3">{t(lang, "How was your day?", "Как прошёл день?")}</h3>
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => setProductive(true)} className={`py-3 rounded-2xl font-medium transition-colors ${productive === true ? "bg-white text-black" : "bg-white/[0.06] text-white/60"}`}>
-            ✓ {t("Productive", "Продуктивный")}
+          <button onClick={() => setProductive(true)} className={`py-3.5 rounded-2xl font-medium transition-colors ${productive === true ? "bg-white text-black" : "bg-white/[0.06] text-white/60"}`}>
+            ✓ {t(lang, "Productive", "Продуктивный")}
           </button>
-          <button onClick={() => setProductive(false)} className={`py-3 rounded-2xl font-medium transition-colors ${productive === false ? "bg-white text-black" : "bg-white/[0.06] text-white/40"}`}>
-            ✗ {t("Off day", "Так себе")}
+          <button onClick={() => setProductive(false)} className={`py-3.5 rounded-2xl font-medium transition-colors ${productive === false ? "bg-white text-black" : "bg-white/[0.06] text-white/40"}`}>
+            ✗ {t(lang, "Off day", "Так себе")}
           </button>
         </div>
         {streak > 0 && (
-          <div className="flex items-center gap-1.5 mt-3 text-xs text-white/40">
-            {Icons.flame}
-            <span>{t(`${streak}-day productive streak`, `${streak} дней подряд продуктивно`)}</span>
+          <div className="flex items-center gap-1.5 mt-3 text-xs text-white/50">
+            <CatIcon name="flame" className="w-3.5 h-3.5" />
+            <span>{t(lang, `${streak}-day productive streak`, `${streak} дней подряд продуктивно`)}</span>
           </div>
         )}
       </Card>
 
-      {/* Sheets */}
-      <AddTxnSheet open={showAdd} onClose={() => setShowAdd(false)} isIncome={addIncome} />
+      {/* daily report */}
+      <button onClick={() => setShowReport(true)} className="w-full">
+        <Card className="flex items-center gap-3">
+          <CatIcon name="leaf" className="w-5 h-5 text-white/80" />
+          <span className="font-medium">{t(lang, "Daily report", "Ежедневный отчёт")}</span>
+          <span className="ml-auto text-white/25">›</span>
+        </Card>
+      </button>
+
+      {add !== null && <AddTxnSheet open onClose={() => setAdd(null)} isIncome={add} />}
       <GoalSheet open={showGoal} onClose={() => setShowGoal(false)} />
+      <ReportSheet open={showReport} onClose={() => setShowReport(false)} />
     </div>
   );
 }
 
-function ProgressRing({ progress, size = 64 }: { progress: number; size?: number }) {
-  const r = (size - 10) / 2;
-  const circ = 2 * Math.PI * r;
-  const p = Math.min(Math.max(progress, 0), 1);
+function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <svg width={size} height={size} className="shrink-0">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="white" strokeOpacity="0.08" strokeWidth="5" />
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="white" strokeWidth="5" strokeLinecap="round"
-        strokeDasharray={circ} strokeDashoffset={circ * (1 - p)}
-        transform={`rotate(-90 ${size / 2} ${size / 2})`} className="transition-all duration-700" />
-      <text x="50%" y="50%" textAnchor="middle" dy="0.35em" fill="white" fontSize="13" fontWeight="700">
-        {Math.round(p * 100)}%
-      </text>
-    </svg>
+    <div className="flex-1 bg-white/[0.04] rounded-2xl px-3 py-2.5">
+      <p className="text-[11px] text-white/30">{label}</p>
+      <p className="text-[15px] font-semibold rounded-font mt-0.5">{value}</p>
+    </div>
   );
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ADD TRANSACTION SHEET
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-function AddTxnSheet({ open, onClose, isIncome }: { open: boolean; onClose: () => void; isIncome: boolean }) {
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ADD TXN
+function AddTxnSheet({ open, onClose, isIncome: preset }: { open: boolean; onClose: () => void; isIncome: boolean }) {
   const { settings } = useSettings();
-  const t = (en: string, ru: string) => settings.lang === "ru" ? ru : en;
-  const { add } = useTxns();
+  const lang = settings.lang;
+  const { txns, add } = useTxns();
+  const [isIncome, setIsIncome] = useState(preset);
   const [amount, setAmount] = useState("");
   const [source, setSource] = useState("");
   const [note, setNote] = useState("");
 
+  const value = parseFloat(amount.replace(",", ".")) || 0;
+  const suggestions = [...new Set(txns.filter((x) => x.source).map((x) => x.source))].slice(0, 8);
+
   const save = () => {
-    const a = parseFloat(amount);
-    if (!a || a <= 0) return;
-    add({ amount: a, isIncome, source, note });
-    setAmount(""); setSource(""); setNote("");
+    if (value <= 0) return;
+    add({ amount: value, isIncome, source: source.trim(), note: note.trim() });
     onClose();
   };
 
   return (
-    <Sheet open={open} onClose={onClose} title={isIncome ? t("Add income", "Добавить доход") : t("Add expense", "Добавить расход")}>
-      <div className="space-y-4">
-        <input type="number" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)}
-          placeholder={t("Amount", "Сумма")} className="w-full bg-white/[0.06] rounded-2xl px-4 py-4 text-2xl font-bold outline-none placeholder:text-white/20" autoFocus />
-        <input value={source} onChange={(e) => setSource(e.target.value)}
-          placeholder={t("Source (optional)", "Источник")} className="w-full bg-white/[0.06] rounded-2xl px-4 py-3 outline-none placeholder:text-white/20" />
-        <input value={note} onChange={(e) => setNote(e.target.value)}
-          placeholder={t("Note (optional)", "Заметка")} className="w-full bg-white/[0.06] rounded-2xl px-4 py-3 outline-none placeholder:text-white/20" />
-        <button onClick={save} className="w-full py-4 bg-white text-black font-semibold rounded-2xl active:scale-[0.98] transition-transform">
-          {t("Save", "Сохранить")}
-        </button>
+    <Sheet open={open} onClose={onClose}
+      title={isIncome ? t(lang, "New income", "Новый доход") : t(lang, "New expense", "Новый расход")}
+      action={<button onClick={save} disabled={value <= 0} className={`text-[15px] font-semibold ${value > 0 ? "text-white" : "text-white/25"}`}>{t(lang, "Save", "Готово")}</button>}>
+      <div className="space-y-5 pt-1">
+        <div className="flex gap-1.5 p-1.5 bg-[#16171D] rounded-[20px]">
+          {[true, false].map((inc) => (
+            <button key={String(inc)} onClick={() => setIsIncome(inc)}
+              className={`flex-1 py-3 rounded-2xl text-sm font-semibold transition-colors ${isIncome === inc ? "bg-white text-black" : "text-white/50"}`}>
+              {inc ? t(lang, "Income", "Доход") : t(lang, "Expense", "Расход")}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-col items-center py-3">
+          <div className="flex items-baseline">
+            <span className={`text-[40px] font-bold rounded-font ${isIncome ? "text-white" : "text-white/50"}`}>{isIncome ? "+" : "−"}</span>
+            <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="0" autoFocus
+              className="text-[56px] font-bold rounded-font bg-transparent outline-none text-center w-auto max-w-[240px] placeholder:text-white/20"
+              style={{ width: `${Math.max(amount.length, 1) + 1}ch` }} />
+          </div>
+          <span className="text-[13px] text-white/30 font-medium">{settings.currency}</span>
+        </div>
+
+        <div>
+          <p className="text-[13px] text-white/50 font-medium mb-2">{t(lang, "Source", "Источник")}</p>
+          <input value={source} onChange={(e) => setSource(e.target.value)}
+            placeholder={t(lang, "e.g. client website", "Например: сайт для клиента")}
+            className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none placeholder:text-white/20" />
+          {suggestions.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto no-scrollbar mt-2.5">
+              {suggestions.map((s) => (
+                <button key={s} onClick={() => setSource(s)}
+                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium ${source === s ? "bg-white text-black" : "bg-white/[0.05] text-white/55"}`}>{s}</button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <p className="text-[13px] text-white/50 font-medium mb-2">{t(lang, "Note", "Заметка")}</p>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t(lang, "Short note…", "Короткая заметка…")}
+            className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none placeholder:text-white/20" />
+        </div>
       </div>
     </Sheet>
   );
@@ -417,112 +328,158 @@ function AddTxnSheet({ open, onClose, isIncome }: { open: boolean; onClose: () =
 
 function GoalSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { settings } = useSettings();
-  const t = (en: string, ru: string) => settings.lang === "ru" ? ru : en;
-  const { setGoal } = useGoal();
-  const [amount, setAmount] = useState("");
-
+  const lang = settings.lang;
+  const { goal, setGoal } = useGoal();
+  const [amount, setAmount] = useState(goal?.amount ? String(goal.amount) : "");
   return (
-    <Sheet open={open} onClose={onClose} title={t("Monthly goal", "Цель на месяц")}>
-      <div className="space-y-4">
-        <input type="number" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)}
-          placeholder={t("Goal amount", "Сумма цели")} className="w-full bg-white/[0.06] rounded-2xl px-4 py-4 text-2xl font-bold outline-none placeholder:text-white/20" autoFocus />
-        <button onClick={() => { const a = parseFloat(amount); if (a > 0) { setGoal(a); setAmount(""); onClose(); } }}
-          className="w-full py-4 bg-white text-black font-semibold rounded-2xl active:scale-[0.98] transition-transform">
-          {t("Save", "Сохранить")}
-        </button>
+    <Sheet open={open} onClose={onClose} title={t(lang, "Monthly goal", "Цель на месяц")}>
+      <div className="space-y-4 pt-1">
+        <div className="flex flex-col items-center py-4">
+          <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="0" autoFocus
+            className="text-[52px] font-bold rounded-font bg-transparent outline-none text-center placeholder:text-white/20"
+            style={{ width: `${Math.max(amount.length, 1) + 1}ch` }} />
+          <span className="text-[13px] text-white/30 font-medium">{settings.currency}</span>
+        </div>
+        <button onClick={() => { const a = parseFloat(amount.replace(",", ".")) || 0; if (a > 0) { setGoal(a); onClose(); } }}
+          className="w-full py-4 bg-white text-black font-semibold rounded-2xl active:scale-[0.98] transition-transform">{t(lang, "Save", "Сохранить")}</button>
       </div>
     </Sheet>
   );
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MONEY TAB
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function ReportSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { settings } = useSettings();
+  const lang = settings.lang;
+  const { txns } = useTxns();
+  const { log, saveReport } = useDayLog();
+  const [earned, setEarned] = useState(log?.earned ? String(log.earned) : (todayIncome(txns) || ""));
+  const [didToday, setDidToday] = useState(log?.didToday ?? "");
+  const [didntWork, setDidntWork] = useState(log?.didntWork ?? "");
+  const [planTomorrow, setPlanTomorrow] = useState(log?.planTomorrow ?? "");
 
+  const save = () => {
+    saveReport({ earned: parseFloat(String(earned).replace(",", ".")) || 0, didToday, didntWork, planTomorrow });
+    onClose();
+  };
+
+  const Field = ({ label, value, set, placeholder, big, decimal }: { label: string; value: string; set: (v: string) => void; placeholder: string; big?: boolean; decimal?: boolean }) => (
+    <div>
+      <p className="text-[13px] text-white/50 font-medium mb-2">{label}</p>
+      {big ? (
+        <textarea value={value} onChange={(e) => set(e.target.value)} placeholder={placeholder} rows={2}
+          className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none placeholder:text-white/20 resize-none" />
+      ) : (
+        <input value={value} onChange={(e) => set(e.target.value)} placeholder={placeholder} inputMode={decimal ? "decimal" : "text"}
+          className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none placeholder:text-white/20" />
+      )}
+    </div>
+  );
+
+  return (
+    <Sheet open={open} onClose={onClose} title={t(lang, "Daily report", "Отчёт за день")}
+      action={<button onClick={save} className="text-[15px] font-semibold text-white">{t(lang, "Save", "Готово")}</button>}>
+      <div className="space-y-4 pt-1">
+        <Field label={t(lang, "How much did you earn today?", "Сколько заработал сегодня?")} value={String(earned)} set={(v) => setEarned(v)} placeholder={settings.currency} decimal />
+        <Field label={t(lang, "What did you do today?", "Что сделал сегодня?")} value={didToday} set={setDidToday} placeholder={t(lang, "Main wins…", "Главные результаты…")} big />
+        <Field label={t(lang, "What didn't work out?", "Что не получилось?")} value={didntWork} set={setDidntWork} placeholder={t(lang, "What to improve…", "Чему научился…")} big />
+        <Field label={t(lang, "Plan for tomorrow", "План на завтра")} value={planTomorrow} set={setPlanTomorrow} placeholder={t(lang, "Next steps…", "3 шага вперёд…")} big />
+      </div>
+    </Sheet>
+  );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ MONEY
 function MoneyTab() {
   const { settings } = useSettings();
-  const t = (en: string, ru: string) => settings.lang === "ru" ? ru : en;
+  const lang = settings.lang;
   const { txns, remove } = useTxns();
+  const [range, setRange] = useState<Range>("week");
   const [showAdd, setShowAdd] = useState(false);
   const fm = (v: number, plus = false) => formatMoney(v, settings.currency, plus);
 
-  const series = weekSeries(txns);
-  const weekInc = series.reduce((s, d) => s + d.income, 0);
+  const series = periodSeries(txns, range, lang);
+  const rangeIncome = series.income.reduce((s, v) => s + v, 0);
+  const rangeExpense = series.expense.reduce((s, v) => s + v, 0);
   const tops = topSources(txns);
+  const periodLabel = range === "week" ? t(lang, "Income · this week", "Доход · за неделю")
+    : range === "month" ? t(lang, "Income · this month", "Доход · за месяц") : t(lang, "Income · this year", "Доход · за год");
 
   const grouped = Object.entries(
-    txns.reduce<Record<string, Txn[]>>((acc, tx) => {
-      const dk = tx.date.slice(0, 10);
-      (acc[dk] ||= []).push(tx);
-      return acc;
-    }, {})
+    txns.reduce<Record<string, Txn[]>>((acc, tx) => { (acc[tx.date.slice(0, 10)] ||= []).push(tx); return acc; }, {})
   ).sort(([a], [b]) => b.localeCompare(a));
 
   return (
     <div className="px-5 pt-14 pb-6">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">{t("Money", "Деньги")}</h1>
-        <button onClick={() => setShowAdd(true)} className="text-white/60 p-1">{Icons.plus}</button>
+        <h1 className="text-[28px] font-bold rounded-font">{t(lang, "Money", "Деньги")}</h1>
+        <button onClick={() => setShowAdd(true)} className="text-white/70 p-1">
+          <svg viewBox="0 0 24 24" className="w-7 h-7" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" /></svg>
+        </button>
       </div>
 
       {txns.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-32">
-          <LineChart data={[]} labels={[]} />
-          <h2 className="text-xl font-semibold mt-8">{t("Start tracking.", "Начни отслеживать.")}</h2>
-          <p className="text-white/40 mt-2">{t("Every number is progress.", "Каждая цифра — шаг вперёд.")}</p>
-          <button onClick={() => setShowAdd(true)} className="mt-6 px-8 py-3 bg-white text-black font-semibold rounded-full active:scale-[0.97] transition-transform">
-            {t("Log", "Записать")}
-          </button>
+        <div className="flex flex-col items-center justify-center pt-24">
+          <div className="w-full max-w-[260px] opacity-50"><LineChart income={[]} labels={[]} height={100} /></div>
+          <h2 className="text-2xl font-semibold mt-8 rounded-font">{t(lang, "Start tracking.", "Начни отслеживать.")}</h2>
+          <p className="text-white/40 mt-2">{t(lang, "Every number is progress.", "Каждая цифра — шаг вперёд.")}</p>
+          <button onClick={() => setShowAdd(true)} className="mt-7 px-9 py-3.5 bg-white text-black font-semibold rounded-full active:scale-[0.97] transition-transform">{t(lang, "Log", "Записать")}</button>
         </div>
       ) : (
-        <div className="space-y-4">
-          <Card>
-            <p className="text-xs text-white/40 font-medium">{t("Income · this week", "Доход · за неделю")}</p>
-            <p className="text-3xl font-bold mt-1 tracking-tight">{fm(weekInc)}</p>
-            <div className="mt-5">
-              <LineChart data={series.map((d) => d.income)} labels={series.map((d) => d.label)} />
+        <div className="space-y-[18px]">
+          <Segmented value={range} onChange={setRange}
+            options={[["week", t(lang, "Week", "Неделя")], ["month", t(lang, "Month", "Месяц")], ["year", t(lang, "Year", "Год")]]} />
+
+          <Card padding="p-[22px]">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs text-white/50 font-medium rounded-font">{periodLabel}</p>
+                <p className="text-[34px] leading-none font-bold rounded-font mt-1.5">{fm(rangeIncome)}</p>
+              </div>
+              {rangeExpense > 0 && (
+                <div className="space-y-1.5">
+                  <Legend label={t(lang, "Income", "Доход")} opacity={0.85} weight={1.8} />
+                  <Legend label={t(lang, "Expense", "Расход")} opacity={0.15} weight={1.2} />
+                </div>
+              )}
             </div>
+            <div className="mt-6"><LineChart income={series.income} expense={series.expense} labels={series.labels} height={180} /></div>
           </Card>
 
           {tops.length > 0 && (
             <Card>
-              <h3 className="text-lg font-semibold mb-3">{t("Top sources", "Лучшие источники")}</h3>
-              <div className="space-y-3">
+              <h3 className="text-[19px] font-semibold rounded-font mb-4">{t(lang, "Top sources", "Лучшие источники")}</h3>
+              <div className="space-y-3.5">
                 {tops.map((s) => (
                   <div key={s.name}>
-                    <div className="flex justify-between text-sm mb-1">
+                    <div className="flex justify-between text-sm mb-1.5">
                       <span className="font-medium">{s.name}</span>
-                      <span className="font-semibold">{fm(s.total)}</span>
+                      <span className="font-semibold rounded-font">{fm(s.total)}</span>
                     </div>
-                    <div className="h-1 bg-white/[0.07] rounded-full">
-                      <div className="h-full bg-white rounded-full transition-all" style={{ width: `${(s.total / (tops[0]?.total || 1)) * 100}%` }} />
-                    </div>
+                    <div className="h-[5px] bg-white/[0.07] rounded-full"><div className="h-full bg-white rounded-full" style={{ width: `${(s.total / (tops[0]?.total || 1)) * 100}%` }} /></div>
                   </div>
                 ))}
               </div>
             </Card>
           )}
 
-          <h3 className="text-lg font-semibold mt-2">{t("History", "История")}</h3>
+          <h3 className="text-[19px] font-semibold rounded-font pt-1">{t(lang, "History", "История")}</h3>
           {grouped.map(([dk, items]) => (
             <div key={dk}>
-              <p className="text-xs text-white/30 font-semibold mb-2 ml-1">
-                {new Date(dk + "T12:00:00").toLocaleDateString(settings.lang === "ru" ? "ru" : "en", { day: "numeric", month: "short" })}
-              </p>
-              <Card className="!p-0 divide-y divide-white/[0.07]">
+              <p className="text-xs text-white/30 font-semibold mb-2 ml-1 rounded-font">{new Date(dk + "T12:00:00").toLocaleDateString(lang === "ru" ? "ru" : "en", { weekday: "short", day: "numeric", month: "short" })}</p>
+              <Card padding="p-0" className="divide-y divide-white/[0.06]">
                 {items.map((tx) => (
-                  <div key={tx.id} className="flex items-center gap-3 px-4 py-3">
-                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm ${tx.isIncome ? "bg-white/10" : "bg-white/[0.04]"}`}>
-                      {tx.isIncome ? "↙" : "↗"}
+                  <div key={tx.id} className="flex items-center gap-3 px-3.5 py-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${tx.isIncome ? "bg-white/10" : "bg-white/[0.04]"}`}>
+                      <span className={tx.isIncome ? "text-white" : "text-white/50"}>{tx.isIncome ? "↙" : "↗"}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{tx.source || t("No source", "Без источника")}</p>
+                      <p className="text-sm font-medium truncate">{tx.source || t(lang, "No source", "Без источника")}</p>
                       {tx.note && <p className="text-xs text-white/40 truncate">{tx.note}</p>}
                     </div>
-                    <span className={`text-sm font-semibold ${tx.isIncome ? "" : "text-white/40"}`}>
-                      {fm(tx.isIncome ? tx.amount : -tx.amount, true)}
-                    </span>
-                    <button onClick={() => remove(tx.id)} className="text-white/20 ml-1">{Icons.trash}</button>
+                    <span className={`text-sm font-semibold rounded-font ${tx.isIncome ? "" : "text-white/40"}`}>{fm(tx.isIncome ? tx.amount : -tx.amount, true)}</span>
+                    <button onClick={() => remove(tx.id)} className="text-white/20 ml-1 p-1">
+                      <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M4 7h16M9 7V4h6v3m-7 0v13h8V7" /></svg>
+                    </button>
                   </div>
                 ))}
               </Card>
@@ -536,13 +493,29 @@ function MoneyTab() {
   );
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// IDEAS TAB
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function Segmented<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: [T, string][] }) {
+  return (
+    <div className="flex gap-1 p-1 bg-[#16171D] rounded-2xl">
+      {options.map(([v, label]) => (
+        <button key={v} onClick={() => onChange(v)} className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors ${value === v ? "bg-white/10 text-white" : "text-white/40"}`}>{label}</button>
+      ))}
+    </div>
+  );
+}
 
+function Legend({ label, opacity, weight }: { label: string; opacity: number; weight: number }) {
+  return (
+    <div className="flex items-center gap-2 justify-end">
+      <span className="w-4 rounded-full" style={{ height: weight, background: `rgba(255,255,255,${opacity})` }} />
+      <span className="text-xs text-white/30">{label}</span>
+    </div>
+  );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ IDEAS
 function IdeasTab() {
   const { settings } = useSettings();
-  const t = (en: string, ru: string) => settings.lang === "ru" ? ru : en;
+  const lang = settings.lang;
   const { ideas, add, update, remove, togglePin } = useIdeas();
   const [filter, setFilter] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -554,207 +527,132 @@ function IdeasTab() {
   return (
     <div className="px-5 pt-14 pb-6">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">{t("Ideas", "Идеи")}</h1>
-        <button onClick={() => setShowNew(true)} className="text-white/60 p-1">{Icons.plus}</button>
-      </div>
-
-      {/* Filter */}
-      <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4 pb-1">
-        <button onClick={() => setFilter(null)}
-          className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${!filter ? "bg-white text-black" : "bg-white/[0.05] text-white/50"}`}>
-          {t("All", "Все")}
+        <h1 className="text-[28px] font-bold rounded-font">{t(lang, "Ideas", "Идеи")}</h1>
+        <button onClick={() => setShowNew(true)} className="text-white/70 p-1">
+          <svg viewBox="0 0 24 24" className="w-7 h-7" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" /></svg>
         </button>
-        {categories.map((c) => (
-          <button key={c.id} onClick={() => setFilter(c.id)}
-            className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${filter === c.id ? "bg-white text-black" : "bg-white/[0.05] text-white/50"}`}>
-            {c.icon} {settings.lang === "ru" ? c.ru : c.label}
-          </button>
-        ))}
       </div>
 
-      {filtered.length === 0 && ideas.length === 0 ? (
-        <div className="flex flex-col items-center py-24">
-          <span className="text-5xl opacity-10">◯</span>
-          <h2 className="text-xl font-semibold mt-6 text-center">{t("Every great thing starts as an idea.", "Всё великое начинается с идеи.")}</h2>
-          <p className="text-white/40 mt-2">{t("Write it down before it fades.", "Запиши, пока помнишь.")}</p>
-          <button onClick={() => setShowNew(true)} className="mt-6 px-8 py-3 bg-white text-black font-semibold rounded-full active:scale-[0.97] transition-transform">
-            {t("Capture", "Записать")}
-          </button>
+      <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4 pb-1">
+        <Chip active={!filter} onClick={() => setFilter(null)}>{t(lang, "All", "Все")}</Chip>
+        {ideaCats.map((c) => <Chip key={c.id} active={filter === c.id} onClick={() => setFilter(c.id)}>{c.icon} {c[lang]}</Chip>)}
+      </div>
+
+      {ideas.length === 0 ? (
+        <div className="flex flex-col items-center pt-20 text-center px-4">
+          <span className="text-5xl text-white/10">◌</span>
+          <h2 className="text-2xl font-semibold mt-6 rounded-font">{t(lang, "Every great thing starts as an idea.", "Всё великое начинается с идеи.")}</h2>
+          <p className="text-white/40 mt-2">{t(lang, "Write it down before it fades.", "Запиши, пока помнишь.")}</p>
+          <button onClick={() => setShowNew(true)} className="mt-7 px-9 py-3.5 bg-white text-black font-semibold rounded-full active:scale-[0.97] transition-transform">{t(lang, "Capture", "Записать")}</button>
         </div>
       ) : (
         <div className="space-y-3">
           {filtered.map((idea) => (
             <Card key={idea.id} onClick={() => setEditing(idea)}>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs">{categories.find((c) => c.id === idea.category)?.icon}</span>
-                <span className="text-xs text-white/40 font-medium">{categories.find((c) => c.id === idea.category)?.[settings.lang === "ru" ? "ru" : "label"]}</span>
-                <span className="ml-auto">{idea.pinned && Icons.pin}</span>
+                <span className="text-xs">{ideaCats.find((c) => c.id === idea.category)?.icon}</span>
+                <span className="text-xs text-white/45 font-medium">{ideaCats.find((c) => c.id === idea.category)?.[lang]}</span>
+                {idea.pinned && <span className="ml-auto text-white/40 text-xs">📌</span>}
               </div>
-              <p className="font-semibold">{idea.title || t("Untitled", "Без названия")}</p>
-              {idea.details && <p className="text-sm text-white/40 mt-1 line-clamp-2">{idea.details}</p>}
+              <p className="font-semibold">{idea.title || t(lang, "Untitled", "Без названия")}</p>
+              {idea.details && <p className="text-sm text-white/45 mt-1 line-clamp-2">{idea.details}</p>}
             </Card>
           ))}
         </div>
       )}
 
-      <IdeaSheet open={showNew} onClose={() => setShowNew(false)} onSave={(i) => { add(i); setShowNew(false); }} />
-      {editing && (
-        <IdeaSheet
-          open={true}
-          onClose={() => setEditing(null)}
-          idea={editing}
-          onSave={(patch) => { update(editing.id, patch); setEditing(null); }}
-          onDelete={() => { remove(editing.id); setEditing(null); }}
-          onPin={() => { togglePin(editing.id); setEditing(null); }}
-        />
-      )}
+      {showNew && <IdeaSheet lang={lang} onClose={() => setShowNew(false)} onSave={(d) => { add(d); setShowNew(false); }} />}
+      {editing && <IdeaSheet lang={lang} idea={editing} onClose={() => setEditing(null)}
+        onSave={(d) => { update(editing.id, d); setEditing(null); }}
+        onDelete={() => { remove(editing.id); setEditing(null); }}
+        onPin={() => { togglePin(editing.id); setEditing(null); }} />}
     </div>
   );
 }
 
-function IdeaSheet({ open, onClose, idea, onSave, onDelete, onPin }: {
-  open: boolean; onClose: () => void;
-  idea?: Idea;
-  onSave: (data: { title: string; details: string; category: Idea["category"] }) => void;
-  onDelete?: () => void;
-  onPin?: () => void;
-}) {
-  const { settings } = useSettings();
-  const t = (en: string, ru: string) => settings.lang === "ru" ? ru : en;
-  const [title, setTitle] = useState(idea?.title || "");
-  const [details, setDetails] = useState(idea?.details || "");
-  const [cat, setCat] = useState<Idea["category"]>(idea?.category || "business");
+function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return <button onClick={onClick} className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${active ? "bg-white text-black" : "bg-white/[0.05] text-white/50"}`}>{children}</button>;
+}
 
+function IdeaSheet({ lang, idea, onClose, onSave, onDelete, onPin }: {
+  lang: "ru" | "en"; idea?: Idea; onClose: () => void;
+  onSave: (d: { title: string; details: string; category: Idea["category"] }) => void; onDelete?: () => void; onPin?: () => void;
+}) {
+  const [title, setTitle] = useState(idea?.title ?? "");
+  const [details, setDetails] = useState(idea?.details ?? "");
+  const [cat, setCat] = useState<Idea["category"]>(idea?.category ?? "business");
+  const canSave = title.trim() || details.trim();
   return (
-    <Sheet open={open} onClose={onClose} title={idea ? t("Idea", "Идея") : t("New idea", "Новая идея")}>
-      <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
-        {categories.map((c) => (
-          <button key={c.id} onClick={() => setCat(c.id)}
-            className={`shrink-0 px-3 py-1.5 rounded-full text-sm transition-colors ${cat === c.id ? "bg-white text-black" : "bg-white/[0.05] text-white/50"}`}>
-            {c.icon} {settings.lang === "ru" ? c.ru : c.label}
-          </button>
-        ))}
-      </div>
-      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("Idea title", "Название идеи")}
-        className="w-full bg-white/[0.06] rounded-2xl px-4 py-3 text-lg font-semibold outline-none placeholder:text-white/20 mb-3" autoFocus />
-      <textarea value={details} onChange={(e) => setDetails(e.target.value)} placeholder={t("Details…", "Подробнее…")} rows={3}
-        className="w-full bg-white/[0.06] rounded-2xl px-4 py-3 outline-none placeholder:text-white/20 resize-none mb-4" />
-      <button onClick={() => onSave({ title, details, category: cat })}
-        className="w-full py-4 bg-white text-black font-semibold rounded-2xl active:scale-[0.98] transition-transform">
-        {t("Save", "Сохранить")}
-      </button>
-      {idea && (
-        <div className="flex gap-3 mt-3">
-          {onPin && <button onClick={onPin} className="flex-1 py-3 bg-white/[0.06] rounded-2xl text-sm text-white/50">{idea.pinned ? t("Unpin", "Открепить") : t("Pin", "Закрепить")}</button>}
-          {onDelete && <button onClick={onDelete} className="flex-1 py-3 bg-white/[0.06] rounded-2xl text-sm text-red-400">{t("Delete", "Удалить")}</button>}
+    <Sheet open onClose={onClose} title={idea ? t(lang, "Idea", "Идея") : t(lang, "New idea", "Новая идея")}
+      action={<button onClick={() => canSave && onSave({ title, details, category: cat })} disabled={!canSave} className={`text-[15px] font-semibold ${canSave ? "text-white" : "text-white/25"}`}>{t(lang, "Save", "Готово")}</button>}>
+      <div className="pt-1">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
+          {ideaCats.map((c) => <Chip key={c.id} active={cat === c.id} onClick={() => setCat(c.id)}>{c.icon} {c[lang]}</Chip>)}
         </div>
-      )}
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t(lang, "Idea title", "Название идеи")} autoFocus
+          className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 text-lg font-semibold outline-none placeholder:text-white/20 mb-3" />
+        <textarea value={details} onChange={(e) => setDetails(e.target.value)} placeholder={t(lang, "Details…", "Подробнее…")} rows={4}
+          className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none placeholder:text-white/20 resize-none" />
+        {idea && (
+          <div className="flex gap-3 mt-4">
+            {onPin && <button onClick={onPin} className="flex-1 py-3 bg-white/[0.06] rounded-2xl text-sm text-white/60">{idea.pinned ? t(lang, "Unpin", "Открепить") : t(lang, "Pin", "Закрепить")}</button>}
+            {onDelete && <button onClick={onDelete} className="flex-1 py-3 bg-white/[0.06] rounded-2xl text-sm text-red-400">{t(lang, "Delete", "Удалить")}</button>}
+          </div>
+        )}
+      </div>
     </Sheet>
   );
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MIND TAB
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-interface Insight {
-  id: string;
-  category: string;
-  text: string;
-  en?: string;
-  author: string;
-  source: string;
-}
-
-function MindTab() {
-  const { settings } = useSettings();
-  const t = (en: string, ru: string) => settings.lang === "ru" ? ru : en;
-  const [insights, setInsights] = useState<Insight[]>([]);
-  const [selected, setSelected] = useState<Insight | null>(null);
-
-  useEffect(() => {
-    fetch("/data/insights.json")
-      .then((r) => r.json())
-      .then((d) => setInsights(d.insights || []))
-      .catch(() => {});
-  }, []);
-
-  const quote = insights.length > 0
-    ? insights[Math.floor(new Date().getDate() * 7 + new Date().getMonth()) % insights.length]
-    : null;
-
-  const cats = [...new Set(insights.map((i) => i.category))];
-  const catNames: Record<string, { en: string; ru: string }> = {
-    strongQuotes: { en: "Strong Quotes", ru: "Сильные цитаты" },
-    psychology: { en: "Psychology", ru: "Психология" },
-    mindset: { en: "Mindset", ru: "Мышление" },
-    habits: { en: "Habits", ru: "Привычки" },
-    negotiation: { en: "Negotiation", ru: "Переговоры" },
-    influence: { en: "Influence", ru: "Влияние" },
-    stoicism: { en: "Stoicism", ru: "Стоицизм" },
-    business: { en: "Business", ru: "Бизнес" },
-    humanNature: { en: "Human Nature", ru: "Природа человека" },
-    meaning: { en: "Meaning", ru: "Смысл" },
-    communication: { en: "Communication", ru: "Общение" },
-    discipline: { en: "Discipline", ru: "Дисциплина" },
-    selfGrowth: { en: "Self Growth", ru: "Саморазвитие" },
-    salesInfluence: { en: "Sales & Influence", ru: "Продажи и влияние" },
-    thinking: { en: "Thinking", ru: "Мышление" },
-    money: { en: "Money", ru: "Деньги" },
-    leadership: { en: "Leadership", ru: "Лидерство" },
-  };
-
-  const [activeCat, setActiveCat] = useState<string | null>(null);
-  const filtered = activeCat ? insights.filter((i) => i.category === activeCat) : [];
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ SETTINGS
+function SettingsTab() {
+  const { settings, setLang, setCurrency } = useSettings();
+  const lang = settings.lang;
+  const [confirmReset, setConfirmReset] = useState(false);
 
   return (
-    <div className="px-5 pt-14 pb-6">
-      <h1 className="text-2xl font-bold mb-1">Mind</h1>
-      <p className="text-sm text-white/40 mb-5">{t("Short, strong ideas for a clearer mind.", "Короткие сильные мысли для ясного ума.")}</p>
+    <div className="px-5 pt-14 pb-6 space-y-[18px]">
+      <h1 className="text-[28px] font-bold rounded-font mb-2">{t(lang, "More", "Ещё")}</h1>
 
-      {quote && !activeCat && (
-        <Card className="mb-4" onClick={() => setSelected(quote)}>
-          <p className="text-[10px] text-white/30 font-semibold tracking-widest uppercase mb-3">❝ {t("Today's thought", "Мысль дня")}</p>
-          <p className="text-lg leading-relaxed font-serif italic">
-            {settings.lang === "ru" ? quote.text : (quote.en || quote.text)}
-          </p>
-          <p className="text-sm text-white/40 mt-3">— {quote.author}</p>
-        </Card>
-      )}
-
-      {activeCat ? (
-        <>
-          <button onClick={() => setActiveCat(null)} className="text-sm text-white/40 mb-4">← {t("Back", "Назад")}</button>
-          <h2 className="text-xl font-semibold mb-4">{catNames[activeCat]?.[settings.lang] || activeCat}</h2>
-          <div className="space-y-3">
-            {filtered.map((ins) => (
-              <Card key={ins.id} onClick={() => setSelected(ins)}>
-                <p className="leading-relaxed">{settings.lang === "ru" ? ins.text : (ins.en || ins.text)}</p>
-                <p className="text-xs text-white/30 mt-2">— {ins.author}</p>
-              </Card>
-            ))}
-          </div>
-        </>
-      ) : (
-        <div className="grid grid-cols-2 gap-3">
-          {cats.map((cat) => (
-            <Card key={cat} onClick={() => setActiveCat(cat)}>
-              <p className="font-semibold text-sm">{catNames[cat]?.[settings.lang] || cat}</p>
-              <p className="text-xs text-white/30 mt-1">{insights.filter((i) => i.category === cat).length} {t("insights", "мыслей")}</p>
-            </Card>
+      <Section title={t(lang, "Language", "Язык")}>
+        <div className="flex gap-2">
+          {(["en", "ru"] as const).map((l) => (
+            <button key={l} onClick={() => setLang(l)} className={`flex-1 py-3 rounded-xl font-medium transition-colors ${lang === l ? "bg-white text-black" : "bg-white/[0.06] text-white/50"}`}>{l === "en" ? "English" : "Русский"}</button>
           ))}
         </div>
-      )}
+      </Section>
 
-      {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6" onClick={() => setSelected(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#1C1E26] rounded-3xl p-8 max-w-lg w-full">
-            <p className="text-xl leading-relaxed font-serif italic">{settings.lang === "ru" ? selected.text : (selected.en || selected.text)}</p>
-            <p className="text-white/40 mt-4">— {selected.author}</p>
-            <p className="text-xs text-white/20 mt-1">{selected.source}</p>
-            <button onClick={() => setSelected(null)} className="mt-6 w-full py-3 bg-white/[0.06] rounded-2xl text-sm text-white/50">
-              {t("Close", "Закрыть")}
-            </button>
+      <Section title={t(lang, "Currency", "Валюта")}>
+        <div className="flex flex-wrap gap-2">
+          {currencies.map((c) => (
+            <button key={c} onClick={() => setCurrency(c)} className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${settings.currency === c ? "bg-white text-black" : "bg-white/[0.06] text-white/50"}`}>{c}</button>
+          ))}
+        </div>
+      </Section>
+
+      <Section title={t(lang, "Sync", "Синхронизация")}>
+        <p className="text-sm text-white/70">{t(lang, "Stored on this device", "Хранится на устройстве")}</p>
+        <p className="text-xs text-white/30 mt-1.5">{t(lang, "Your data lives privately in this browser. Add aly to your home screen to keep it close.", "Данные приватно хранятся в этом браузере. Добавь aly на экран «Домой», чтобы держать под рукой.")}</p>
+      </Section>
+
+      <Section title={t(lang, "About", "О приложении")}>
+        <div className="flex justify-between text-sm"><span>{t(lang, "Version", "Версия")}</span><span className="text-white/40 rounded-font">1.0</span></div>
+        <div className="h-px bg-white/[0.07] my-3" />
+        <button onClick={() => setConfirmReset(true)} className="text-red-400 text-sm font-medium">{t(lang, "Reset all data", "Сбросить все данные")}</button>
+      </Section>
+
+      <p className="text-center text-xs text-white/20 pt-2">aly · {t(lang, "your personal life dashboard", "личный дашборд жизни")}</p>
+
+      {confirmReset && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-6" onClick={() => setConfirmReset(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#1C1E26] rounded-3xl p-6 max-w-sm w-full text-center">
+            <p className="font-semibold mb-2">{t(lang, "Delete all data?", "Удалить все данные?")}</p>
+            <p className="text-sm text-white/40 mb-6">{t(lang, "This cannot be undone.", "Это нельзя отменить.")}</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmReset(false)} className="flex-1 py-3 bg-white/[0.06] rounded-2xl text-sm">{t(lang, "Cancel", "Отмена")}</button>
+              <button onClick={() => { ["aly_txns", "aly_ideas", "aly_goals", "aly_focus", "aly_logs", "aly_reading", "aly_highlights", "aly_saved"].forEach((k) => localStorage.removeItem(k)); location.reload(); }}
+                className="flex-1 py-3 bg-red-500/20 text-red-400 rounded-2xl text-sm font-medium">{t(lang, "Delete", "Удалить")}</button>
+            </div>
           </div>
         </div>
       )}
@@ -762,82 +660,11 @@ function MindTab() {
   );
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// SETTINGS TAB
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-function SettingsTab() {
-  const { settings, setLang, setCurrency } = useSettings();
-  const t = (en: string, ru: string) => settings.lang === "ru" ? ru : en;
-  const [confirmReset, setConfirmReset] = useState(false);
-
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="px-5 pt-14 pb-6 space-y-4">
-      <h1 className="text-2xl font-bold mb-4">{t("More", "Ещё")}</h1>
-
-      <div>
-        <p className="text-xs text-white/30 font-semibold uppercase tracking-wider mb-2 ml-1">{t("Language", "Язык")}</p>
-        <Card>
-          <div className="flex gap-2">
-            {(["en", "ru"] as const).map((l) => (
-              <button key={l} onClick={() => setLang(l)}
-                className={`flex-1 py-3 rounded-xl font-medium transition-colors ${settings.lang === l ? "bg-white text-black" : "bg-white/[0.06] text-white/50"}`}>
-                {l === "en" ? "English" : "Русский"}
-              </button>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      <div>
-        <p className="text-xs text-white/30 font-semibold uppercase tracking-wider mb-2 ml-1">{t("Currency", "Валюта")}</p>
-        <Card>
-          <div className="flex flex-wrap gap-2">
-            {currencies.map((c) => (
-              <button key={c} onClick={() => setCurrency(c)}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${settings.currency === c ? "bg-white text-black" : "bg-white/[0.06] text-white/50"}`}>
-                {c}
-              </button>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      <div>
-        <p className="text-xs text-white/30 font-semibold uppercase tracking-wider mb-2 ml-1">{t("About", "О приложении")}</p>
-        <Card>
-          <div className="flex justify-between text-sm">
-            <span>{t("Version", "Версия")}</span>
-            <span className="text-white/40">1.0</span>
-          </div>
-        </Card>
-      </div>
-
-      <Card>
-        <button onClick={() => setConfirmReset(true)} className="text-red-400 text-sm font-medium w-full text-left">
-          {t("Reset all data", "Сбросить все данные")}
-        </button>
-      </Card>
-
-      <p className="text-center text-xs text-white/20 pt-2">
-        aly · {t("your personal life dashboard", "личный дашборд жизни")}
-      </p>
-
-      {confirmReset && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6" onClick={() => setConfirmReset(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#1C1E26] rounded-3xl p-6 max-w-sm w-full text-center">
-            <p className="font-semibold mb-2">{t("Delete all data?", "Удалить все данные?")}</p>
-            <p className="text-sm text-white/40 mb-6">{t("This cannot be undone.", "Это нельзя отменить.")}</p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmReset(false)} className="flex-1 py-3 bg-white/[0.06] rounded-2xl text-sm">{t("Cancel", "Отмена")}</button>
-              <button onClick={() => {
-                ["aly_txns", "aly_ideas", "aly_goals", "aly_focus", "aly_logs", "aly_settings"].forEach((k) => localStorage.removeItem(k));
-                window.location.reload();
-              }} className="flex-1 py-3 bg-red-500/20 text-red-400 rounded-2xl text-sm font-medium">{t("Delete", "Удалить")}</button>
-            </div>
-          </div>
-        </div>
-      )}
+    <div>
+      <p className="text-xs text-white/30 font-semibold uppercase tracking-wider mb-2 ml-1 rounded-font">{title}</p>
+      <Card>{children}</Card>
     </div>
   );
 }

@@ -114,8 +114,39 @@ html.lenis body {
   to { transform: translateY(0); }
 }
 .animate-slide-up {
-  animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slide-up 0.34s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+/* SF Pro Rounded on Apple devices — matches the native app's rounded numerals & titles */
+.rounded-font {
+  font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
+}
+
+/* Line chart grow-in */
+@keyframes chart-draw {
+  from { stroke-dasharray: 1; stroke-dashoffset: 1; }
+  to { stroke-dasharray: 1; stroke-dashoffset: 0; }
+}
+.chart-draw {
+  animation: chart-draw 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Splash: "alyosha" → "aly" */
+@keyframes splash-fade {
+  0% { opacity: 0; transform: scale(0.94); }
+  18% { opacity: 1; transform: scale(1); }
+  44% { transform: scale(1.08); }
+  70% { transform: scale(1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes osha-out {
+  0%, 52% { opacity: 1; transform: translateX(0); }
+  78%, 100% { opacity: 0; transform: translateX(40px); }
+}
+.splash-word { animation: splash-fade 2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.splash-osha { animation: osha-out 2s cubic-bezier(0.16, 1, 0.3, 1) forwards; display: inline-block; }
+.splash-fadeout { animation: fadeout 0.45s ease forwards; }
+@keyframes fadeout { to { opacity: 0; } }
 
 @media (prefers-reduced-motion: reduce) {
   * {
