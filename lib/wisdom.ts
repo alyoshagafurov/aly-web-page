@@ -54,8 +54,9 @@ export async function loadBooks(): Promise<Book[]> {
   return _books!;
 }
 
-export function quoteOfDay(insights: Insight[]): Insight | null {
+export function quoteOfDay(insights: Insight[], tick = 0): Insight | null {
   if (!insights.length) return null;
-  const epochDay = Math.floor(Date.now() / 86400000);
-  return insights[epochDay % insights.length];
+  const interval = 7 * 60 * 1000;
+  const slot = Math.floor(Date.now() / interval) + tick;
+  return insights[((slot % insights.length) + insights.length) % insights.length];
 }

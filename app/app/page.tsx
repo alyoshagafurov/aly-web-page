@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import {
-  useTxns, useIdeas, useGoal, useFocus, useDayLog, useSettings,
+  useTxns, useIdeas, useGoal, useFocus, useDayLog, useSettings, today,
   balance, monthIncome, todayIncome, topSources, periodSeries, formatMoney,
   type Txn, type Idea, type Range,
 } from "@/lib/store";
@@ -17,11 +17,11 @@ const ideaCats = [
   { id: "ai" as const, en: "AI / Bots", ru: "AI / Боты", icon: "✦" },
   { id: "thought" as const, en: "Thoughts", ru: "Мысли", icon: "◌" },
 ];
-const currencies = ["USD", "EUR", "RUB", "GBP", "UAH", "KZT", "TRY", "AED"];
+const currencies = ["USD", "RUB", "TJS"];
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ROOT
 export default function AppPage() {
-  const { settings, completeOnboarding } = useSettings();
+  const { settings, completeOnboarding, setFocusDate } = useSettings();
   const [tab, setTab] = useState<Tab>("home");
   const [splash, setSplash] = useState(true);
   const [onboarding, setOnboarding] = useState(false);
@@ -30,12 +30,13 @@ export default function AppPage() {
     const tm = setTimeout(() => {
       setSplash(false);
       setOnboarding(!settings.onboarded);
-    }, 2050);
+    }, 2500);
     return () => clearTimeout(tm);
   }, [settings.onboarded]);
 
   if (splash) return <Splash />;
   if (onboarding) return <Onboarding lang={settings.lang} onDone={() => { completeOnboarding(); setOnboarding(false); }} />;
+  if (settings.focusDate !== today()) return <FocusSetup lang={settings.lang} onDone={() => setFocusDate(today())} />;
 
   return (
     <div className="flex flex-col h-full bg-[#0A0A0C]">
@@ -88,6 +89,54 @@ function Onboarding({ lang, onDone }: { lang: "ru" | "en"; onDone: () => void })
   );
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ FOCUS SETUP
+function FocusSetup({ lang, onDone }: { lang: "ru" | "en"; onDone: () => void }) {
+  const { tasks, setText } = useFocus();
+  const [local, setLocal] = useState(() => tasks.map((tk) => ({ id: tk.id, text: tk.text })));
+  const allFilled = local.every((tk) => tk.text.trim());
+
+  const handleDone = () => {
+    local.forEach((l) => setText(l.id, l.text));
+    onDone();
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-black px-6">
+      <div className="flex-1 flex flex-col justify-center">
+        <h1 className="text-[28px] font-bold rounded-font text-center">
+          {t(lang, "Today's focus", "Фокус на день")}
+        </h1>
+        <p className="text-white/40 text-center mt-3 text-[15px]">
+          {t(lang, "Write 3 important tasks for today", "Напиши 3 важных дела на сегодня")}
+        </p>
+        <div className="space-y-3 mt-10">
+          {local.map((task, i) => (
+            <div key={task.id} className="flex items-center gap-3">
+              <span className="text-white/15 text-sm font-bold rounded-font w-5 text-right">{i + 1}</span>
+              <input
+                value={task.text}
+                onChange={(e) => setLocal((prev) => prev.map((tk) => (tk.id === task.id ? { ...tk, text: e.target.value } : tk)))}
+                placeholder={t(lang, "Important task…", "Важная задача…")}
+                autoFocus={i === 0}
+                className="flex-1 bg-[#16171D] rounded-2xl px-4 py-4 outline-none placeholder:text-white/20 text-[17px] border border-white/[0.06]"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+      <button
+        onClick={handleDone}
+        disabled={!allFilled}
+        className={`w-full py-4 font-semibold rounded-2xl mb-14 active:scale-[0.98] transition-all ${
+          allFilled ? "bg-white text-black" : "bg-white/[0.07] text-white/20"
+        }`}
+      >
+        {t(lang, "Start the day", "Начать день")}
+      </button>
+    </div>
+  );
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ TAB BAR
 function TabBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
   const { settings } = useSettings();
@@ -120,8 +169,7 @@ function HomeTab() {
   const lang = settings.lang;
   const { txns } = useTxns();
   const { goal } = useGoal();
-  const { tasks, setText, toggle } = useFocus();
-  const { productive, setProductive, streak } = useDayLog();
+  const { tasks, fireScore, setText, toggle } = useFocus();
   const [add, setAdd] = useState<null | boolean>(null);
   const [showGoal, setShowGoal] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -143,9 +191,9 @@ function HomeTab() {
           <h1 className="text-[22px] font-bold rounded-font">{greeting}</h1>
           <p className="text-sm text-white/50">{new Date().toLocaleDateString(lang === "ru" ? "ru" : "en", { weekday: "short", day: "numeric", month: "short" })}</p>
         </div>
-        {streak > 0 && (
+        {fireScore > 0 && (
           <div className="flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-2">
-            <CatIcon name="flame" className="w-4 h-4" /><span className="text-sm font-bold rounded-font">{streak}</span>
+            <CatIcon name="flame" className="w-4 h-4" /><span className="text-sm font-bold rounded-font">{Number.isInteger(fireScore) ? fireScore : fireScore.toFixed(1)}</span>
           </div>
         )}
       </div>
@@ -214,25 +262,6 @@ function HomeTab() {
         </div>
       </Card>
 
-      {/* productivity */}
-      <Card>
-        <h3 className="text-[19px] font-semibold rounded-font mb-3">{t(lang, "How was your day?", "Как прошёл день?")}</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => setProductive(true)} className={`py-3.5 rounded-2xl font-medium transition-colors ${productive === true ? "bg-white text-black" : "bg-white/[0.06] text-white/60"}`}>
-            ✓ {t(lang, "Productive", "Продуктивный")}
-          </button>
-          <button onClick={() => setProductive(false)} className={`py-3.5 rounded-2xl font-medium transition-colors ${productive === false ? "bg-white text-black" : "bg-white/[0.06] text-white/40"}`}>
-            ✗ {t(lang, "Off day", "Так себе")}
-          </button>
-        </div>
-        {streak > 0 && (
-          <div className="flex items-center gap-1.5 mt-3 text-xs text-white/50">
-            <CatIcon name="flame" className="w-3.5 h-3.5" />
-            <span>{t(lang, `${streak}-day productive streak`, `${streak} дней подряд продуктивно`)}</span>
-          </div>
-        )}
-      </Card>
-
       {/* daily report */}
       <button onClick={() => setShowReport(true)} className="w-full">
         <Card className="flex items-center gap-3">
@@ -267,13 +296,14 @@ function AddTxnSheet({ open, onClose, isIncome: preset }: { open: boolean; onClo
   const [amount, setAmount] = useState("");
   const [source, setSource] = useState("");
   const [note, setNote] = useState("");
+  const [date, setDate] = useState(today);
 
   const value = parseFloat(amount.replace(",", ".")) || 0;
   const suggestions = [...new Set(txns.filter((x) => x.source).map((x) => x.source))].slice(0, 8);
 
   const save = () => {
     if (value <= 0) return;
-    add({ amount: value, isIncome, source: source.trim(), note: note.trim() });
+    add({ amount: value, isIncome, source: source.trim(), note: note.trim(), date: new Date(date + "T12:00:00").toISOString() });
     onClose();
   };
 
@@ -320,6 +350,12 @@ function AddTxnSheet({ open, onClose, isIncome: preset }: { open: boolean; onClo
           <p className="text-[13px] text-white/50 font-medium mb-2">{t(lang, "Note", "Заметка")}</p>
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t(lang, "Short note…", "Короткая заметка…")}
             className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none placeholder:text-white/20" />
+        </div>
+
+        <div>
+          <p className="text-[13px] text-white/50 font-medium mb-2">{t(lang, "Date", "Дата")}</p>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+            className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none text-white/80 [color-scheme:dark]" />
         </div>
       </div>
     </Sheet>

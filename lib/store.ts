@@ -3,7 +3,7 @@ import { useCallback, useSyncExternalStore } from "react";
 
 // ── helpers ──
 const uid = () => crypto.randomUUID();
-const today = () => {
+export const today = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
@@ -59,7 +59,7 @@ export interface FocusTask { id: string; text: string; done: boolean; dayKey: st
 export interface DayLog { dayKey: string; productive: boolean | null; earned: number; didToday: string; didntWork: string; planTomorrow: string; }
 export interface ReadingState { bookID: string; chapterIndex: number; paragraphIndex: number; percent: number; updatedAt: string; }
 export interface Highlight { bookID: string; chapterIndex: number; text: string; }
-export interface AppSettings { lang: "ru" | "en"; currency: string; onboarded: boolean; readerFont: number; }
+export interface AppSettings { lang: "ru" | "en"; currency: string; onboarded: boolean; readerFont: number; focusDate: string; }
 
 export type Range = "week" | "month" | "year";
 
@@ -69,8 +69,8 @@ export function useTxns() {
   const [txns, set] = useLS<Txn[]>("aly_txns", []);
   return {
     txns,
-    add: (t: Omit<Txn, "id" | "date">) =>
-      set((p) => [{ ...t, id: uid(), date: new Date().toISOString() }, ...p]),
+    add: (t: Omit<Txn, "id" | "date"> & { date?: string }) =>
+      set((p) => [{ ...t, id: uid(), date: t.date || new Date().toISOString() }, ...p]),
     remove: (id: string) => set((p) => p.filter((x) => x.id !== id)),
   };
 }
@@ -110,8 +110,26 @@ export function useFocus() {
     todayTasks = [...todayTasks, ...extra];
     writeLS("aly_focus", [...tasks.filter((t) => t.dayKey !== dk), ...todayTasks]);
   }
+
+  const byDay = new Map<string, FocusTask[]>();
+  tasks.forEach((task) => {
+    if (task.dayKey === dk) return;
+    const arr = byDay.get(task.dayKey);
+    if (arr) arr.push(task); else byDay.set(task.dayKey, [task]);
+  });
+  let fire = 0;
+  byDay.forEach((dayTasks) => {
+    const withText = dayTasks.filter((t) => t.text.trim());
+    if (withText.length === 0) return;
+    const done = withText.filter((t) => t.done).length;
+    if (done >= 3) fire += 1;
+    else if (done >= 2) fire += 0.5;
+    else if (done === 0) fire -= 1;
+  });
+
   return {
     tasks: todayTasks,
+    fireScore: Math.max(0, fire),
     setText: (id: string, text: string) => set((p) => p.map((t) => (t.id === id ? { ...t, text } : t))),
     toggle: (id: string) => set((p) => p.map((t) => (t.id === id ? { ...t, done: !t.done } : t))),
   };
@@ -129,30 +147,19 @@ export function useDayLog() {
     });
   return {
     log,
-    productive: log?.productive ?? null,
-    setProductive: (val: boolean) => upsert({ productive: val }),
-    saveReport: (r: { earned: number; didToday: string; didntWork: string; planTomorrow: string }) =>
-      upsert({ ...r, productive: log?.productive ?? true }),
-    streak: (() => {
-      const prod = new Set(logs.filter((l) => l.productive).map((l) => l.dayKey));
-      let count = 0;
-      const d = new Date();
-      const key = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
-      if (!prod.has(key(d))) d.setDate(d.getDate() - 1);
-      while (prod.has(key(d))) { count++; d.setDate(d.getDate() - 1); }
-      return count;
-    })(),
+    saveReport: (r: { earned: number; didToday: string; didntWork: string; planTomorrow: string }) => upsert(r),
   };
 }
 
 export function useSettings() {
-  const [s, set] = useLS<AppSettings>("aly_settings", { lang: "en", currency: "USD", onboarded: false, readerFont: 19 });
+  const [s, set] = useLS<AppSettings>("aly_settings", { lang: "en", currency: "USD", onboarded: false, readerFont: 19, focusDate: "" });
   return {
     settings: s,
     setLang: (lang: "ru" | "en") => set((p) => ({ ...p, lang })),
     setCurrency: (currency: string) => set((p) => ({ ...p, currency })),
     setReaderFont: (readerFont: number) => set((p) => ({ ...p, readerFont: Math.min(24, Math.max(16, readerFont)) })),
     completeOnboarding: () => set((p) => ({ ...p, onboarded: true })),
+    setFocusDate: (focusDate: string) => set((p) => ({ ...p, focusDate })),
   };
 }
 

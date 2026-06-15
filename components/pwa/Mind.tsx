@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   loadInsights, loadBooks, quoteOfDay, paragraphsOf, chapterMinutes,
   CATEGORIES, catMeta, type Insight, type Book,
@@ -77,6 +77,11 @@ function Home({ lang, insights, books, continueBook, continuePct, onCategory, on
   continueBook?: Book; continuePct: number;
   onCategory: (id: string) => void; onInsight: (id: string) => void; onReader: (id: string) => void; onSaved: () => void;
 }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => setTick((t) => t + 1), 7 * 60 * 1000);
+    return () => clearInterval(iv);
+  }, []);
   const quote = quoteOfDay(insights);
   const body = (i: Insight) => (lang === "en" && i.en ? i.en : i.text);
 
