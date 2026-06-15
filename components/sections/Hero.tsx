@@ -21,11 +21,10 @@ export default function Hero() {
   return (
     <section id="top" className="relative flex min-h-[100svh] items-center overflow-hidden px-6 pt-28 pb-16">
       <div className="absolute inset-0 -z-10 grid-faint" />
-      <motion.div
+      <div
         aria-hidden
-        className="pointer-events-none absolute left-1/2 top-1/3 -z-10 h-[55vh] w-[55vh] -translate-x-1/2 rounded-full bg-white/[0.06] blur-[120px]"
-        animate={{ x: [-40, 40, -40], y: [-20, 20, -20], scale: [1, 1.1, 1] }}
-        transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+        className="pointer-events-none absolute left-1/2 top-1/3 -z-10 h-[60vh] w-[60vh] -translate-x-1/2 rounded-full"
+        style={{ background: "radial-gradient(circle, rgba(255,255,255,0.07), transparent 65%)" }}
       />
 
       <motion.div

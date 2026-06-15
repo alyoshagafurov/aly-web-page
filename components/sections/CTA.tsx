@@ -9,7 +9,10 @@ export default function CTA() {
 
   return (
     <section id="cta" className="relative overflow-hidden px-6 py-40 text-center sm:py-52">
-      <div className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[60vh] w-[60vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/[0.07] blur-[130px]" />
+      <div
+        className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[70vh] w-[70vh] -translate-x-1/2 -translate-y-1/2 rounded-full"
+        style={{ background: "radial-gradient(circle, rgba(255,255,255,0.06), transparent 65%)" }}
+      />
       <div className="mx-auto max-w-3xl">
         <Reveal>
           <h2 className="display text-[clamp(3rem,9vw,7rem)] font-semibold">
