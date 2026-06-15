@@ -578,30 +578,31 @@ function ExchangeCard({ lang, rates }: { lang: "ru" | "en"; rates: Record<string
               </div>
             ))}
           </div>
-          <div className="bg-[#16171D] rounded-2xl p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <div className="flex gap-1.5 mb-2">
+          <div className="bg-[#16171D] rounded-2xl p-4 space-y-3">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex gap-1.5">
                   {currencies.map((c) => (
                     <button key={c} onClick={() => { setFromCur(c); if (c === toCur) setToCur(fromCur); }}
                       className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${fromCur === c ? "bg-white text-black" : "bg-white/[0.06] text-white/40"}`}>{c}</button>
                   ))}
                 </div>
-                <input value={inputVal} onChange={(e) => setInputVal(e.target.value)} inputMode="decimal" placeholder="0"
-                  className="w-full bg-transparent outline-none text-[28px] font-bold rounded-font placeholder:text-white/20" />
+                <button onClick={swap} className="text-white/30 p-1.5 active:scale-90 transition-transform">
+                  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 12l-3-3m3 3l3-3M17 8v12m0-12l3 3m-3-3l-3 3" /></svg>
+                </button>
               </div>
-              <button onClick={swap} className="text-white/30 p-2 active:scale-90 transition-transform">
-                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 12l-3-3m3 3l3-3M17 8v12m0-12l3 3m-3-3l-3 3" /></svg>
-              </button>
-              <div className="flex-1 text-right">
-                <div className="flex gap-1.5 justify-end mb-2">
-                  {currencies.map((c) => (
-                    <button key={c} onClick={() => { setToCur(c); if (c === fromCur) setFromCur(toCur); }}
-                      className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${toCur === c ? "bg-white text-black" : "bg-white/[0.06] text-white/40"}`}>{c}</button>
-                  ))}
-                </div>
-                <p className="text-[28px] font-bold rounded-font text-white/70">{converted < 1 ? converted.toFixed(4) : converted.toFixed(2)}</p>
+              <input value={inputVal} onChange={(e) => setInputVal(e.target.value)} inputMode="decimal" placeholder="0"
+                className="w-full bg-transparent outline-none text-[32px] font-bold rounded-font placeholder:text-white/20" />
+            </div>
+            <div className="h-px bg-white/[0.06]" />
+            <div>
+              <div className="flex gap-1.5 mb-2">
+                {currencies.map((c) => (
+                  <button key={c} onClick={() => { setToCur(c); if (c === fromCur) setFromCur(toCur); }}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${toCur === c ? "bg-white text-black" : "bg-white/[0.06] text-white/40"}`}>{c}</button>
+                ))}
               </div>
+              <p className="text-[32px] font-bold rounded-font text-white/60">{converted < 1 ? converted.toFixed(4) : converted.toFixed(2)}</p>
             </div>
           </div>
         </>
