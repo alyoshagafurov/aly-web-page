@@ -289,7 +289,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ADD TXN
 function AddTxnSheet({ open, onClose, isIncome: preset }: { open: boolean; onClose: () => void; isIncome: boolean }) {
-  const { settings } = useSettings();
+  const { settings, setCurrency } = useSettings();
   const lang = settings.lang;
   const { txns, add } = useTxns();
   const [isIncome, setIsIncome] = useState(preset);
@@ -328,7 +328,14 @@ function AddTxnSheet({ open, onClose, isIncome: preset }: { open: boolean; onClo
               className="text-[56px] font-bold rounded-font bg-transparent outline-none text-center w-auto max-w-[240px] placeholder:text-white/20"
               style={{ width: `${Math.max(amount.length, 1) + 1}ch` }} />
           </div>
-          <span className="text-[13px] text-white/30 font-medium">{settings.currency}</span>
+          <div className="flex gap-2 mt-1">
+            {currencies.map((c) => (
+              <button key={c} onClick={() => setCurrency(c)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${settings.currency === c ? "bg-white text-black" : "bg-white/[0.06] text-white/40"}`}>
+                {c}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div>

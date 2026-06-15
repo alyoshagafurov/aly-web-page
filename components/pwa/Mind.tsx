@@ -10,10 +10,22 @@ import { Card, Sheet, CatIcon, ProgressBar, t } from "./ui";
 
 type Route =
   | { v: "home" }
+  | { v: "categories" }
   | { v: "category"; id: string }
   | { v: "insight"; id: string }
   | { v: "reader"; bookId: string }
   | { v: "saved" };
+
+function getRotatingQuotes(insights: Insight[], count = 20): Insight[] {
+  if (insights.length === 0) return [];
+  const slot = Math.floor(Date.now() / (7 * 60 * 1000));
+  const start = (slot * 3) % insights.length;
+  const result: Insight[] = [];
+  for (let i = 0; i < Math.min(count, insights.length); i++) {
+    result.push(insights[(start + i) % insights.length]);
+  }
+  return result;
+}
 
 export default function Mind() {
   const { settings } = useSettings();
@@ -49,11 +61,14 @@ export default function Mind() {
           lang={lang} insights={insights} books={books}
           continueBook={continueState ? bookById(continueState.bookID) : undefined}
           continuePct={continueState?.percent ?? 0}
-          onCategory={(id) => push({ v: "category", id })}
           onInsight={(id) => push({ v: "insight", id })}
           onReader={(bookId) => push({ v: "reader", bookId })}
           onSaved={() => push({ v: "saved" })}
+          onCategories={() => push({ v: "categories" })}
         />
+      )}
+      {route.v === "categories" && (
+        <CategoriesView lang={lang} insights={insights} onBack={pop} onCategory={(id) => push({ v: "category", id })} />
       )}
       {route.v === "category" && (
         <Feed lang={lang} title={catMeta(route.id)?.[lang] || route.id}
@@ -72,17 +87,17 @@ export default function Mind() {
 }
 
 // ── Home ──
-function Home({ lang, insights, books, continueBook, continuePct, onCategory, onInsight, onReader, onSaved }: {
+function Home({ lang, insights, books, continueBook, continuePct, onInsight, onReader, onSaved, onCategories }: {
   lang: "ru" | "en"; insights: Insight[]; books: Book[];
   continueBook?: Book; continuePct: number;
-  onCategory: (id: string) => void; onInsight: (id: string) => void; onReader: (id: string) => void; onSaved: () => void;
+  onInsight: (id: string) => void; onReader: (id: string) => void; onSaved: () => void; onCategories: () => void;
 }) {
   const [, setTick] = useState(0);
   useEffect(() => {
-    const iv = setInterval(() => setTick((t) => t + 1), 7 * 60 * 1000);
+    const iv = setInterval(() => setTick((prev) => prev + 1), 7 * 60 * 1000);
     return () => clearInterval(iv);
   }, []);
-  const quote = quoteOfDay(insights);
+  const quotes = getRotatingQuotes(insights, 20);
   const body = (i: Insight) => (lang === "en" && i.en ? i.en : i.text);
 
   return (
@@ -92,16 +107,6 @@ function Home({ lang, insights, books, continueBook, continuePct, onCategory, on
         <button onClick={onSaved} className="text-white/70 p-1"><CatIcon name="bookmark" className="w-[22px] h-[22px]" /></button>
       </div>
       <p className="text-sm text-white/50 mb-5">{t(lang, "Short, strong ideas — for a clearer mind and quiet confidence.", "Короткие сильные мысли — для ясного ума и спокойной уверенности.")}</p>
-
-      {quote && (
-        <Card className="mb-3" padding="p-6" onClick={() => (quote.bookId ? onReader(quote.bookId) : onInsight(quote.id))}>
-          <div className="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.1em] text-white/30 uppercase mb-4 rounded-font">
-            <CatIcon name="quote" className="w-3.5 h-3.5" /> {t(lang, "Today's thought", "Мысль дня")}
-          </div>
-          <p className="text-[22px] leading-[1.45] font-serif text-white/95">{body(quote)}</p>
-          <p className="text-sm text-white/50 mt-4 font-medium">— {quote.author}</p>
-        </Card>
-      )}
 
       {continueBook && (
         <Card className="mb-3" onClick={() => onReader(continueBook.id)}>
@@ -115,19 +120,49 @@ function Home({ lang, insights, books, continueBook, continuePct, onCategory, on
         </Card>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        {CATEGORIES.map((c) => {
-          const count = insights.filter((i) => i.category === c.id).length;
+      <div className="space-y-3 mb-4">
+        {quotes.map((q, i) => {
+          const meta = catMeta(q.category);
           return (
-            <Card key={c.id} onClick={() => onCategory(c.id)} className="h-[132px] flex flex-col">
-              <CatIcon name={c.icon} className="w-6 h-6 text-white" />
-              <div className="mt-auto">
-                <p className="font-semibold text-[15px] rounded-font leading-tight">{c[lang]}</p>
-                <p className="text-[11px] text-white/45 mt-1 truncate">{c[lang === "ru" ? "subRu" : "subEn"]}</p>
+            <Card key={q.id + "-" + i} onClick={() => onInsight(q.id)} padding="p-5">
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.08em] text-white/25 uppercase mb-3 rounded-font">
+                {meta && <CatIcon name={meta.icon} className="w-3 h-3" />} {meta?.[lang]}
               </div>
+              <p className="text-[18px] leading-[1.55] font-serif text-white/90">{body(q)}</p>
+              <p className="text-[13px] text-white/45 mt-3 font-medium">— {q.author}</p>
             </Card>
           );
         })}
+      </div>
+
+      <button onClick={onCategories} className="w-full mb-2">
+        <Card className="flex items-center gap-3">
+          <CatIcon name="book" className="w-5 h-5 text-white/70" />
+          <span className="font-medium">{t(lang, "Browse categories", "Все категории")}</span>
+          <span className="ml-auto text-white/25">›</span>
+        </Card>
+      </button>
+    </>
+  );
+}
+
+// ── Categories grid ──
+function CategoriesView({ lang, insights, onBack, onCategory }: {
+  lang: "ru" | "en"; insights: Insight[]; onBack: () => void; onCategory: (id: string) => void;
+}) {
+  return (
+    <>
+      <BackHeader title={t(lang, "Categories", "Категории")} onBack={onBack} />
+      <div className="grid grid-cols-2 gap-3">
+        {CATEGORIES.map((c) => (
+          <Card key={c.id} onClick={() => onCategory(c.id)} className="h-[132px] flex flex-col">
+            <CatIcon name={c.icon} className="w-6 h-6 text-white" />
+            <div className="mt-auto">
+              <p className="font-semibold text-[15px] rounded-font leading-tight">{c[lang]}</p>
+              <p className="text-[11px] text-white/45 mt-1 truncate">{c[lang === "ru" ? "subRu" : "subEn"]}</p>
+            </div>
+          </Card>
+        ))}
       </div>
     </>
   );
