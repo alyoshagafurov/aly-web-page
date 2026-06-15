@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
 // ── helpers ──
 const uid = () => crypto.randomUUID();
@@ -52,7 +52,7 @@ function useLS<T>(key: string, fallback: T): [T, (fn: (prev: T) => T) => void] {
 }
 
 // ── models ──
-export interface Txn { id: string; amount: number; isIncome: boolean; source: string; note: string; date: string; }
+export interface Txn { id: string; amount: number; isIncome: boolean; source: string; note: string; date: string; currency?: string; }
 export interface Idea { id: string; title: string; details: string; category: "business" | "website" | "ai" | "thought"; pinned: boolean; createdAt: string; }
 export interface Goal { id: string; amount: number; monthKey: string; }
 export interface FocusTask { id: string; text: string; done: boolean; dayKey: string; order: number; }
@@ -197,28 +197,61 @@ export function useSaved() {
   };
 }
 
+// ── exchange rates ──
+
+export function useRates() {
+  const [rates, setRates] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const cached = readLS<{ data: Record<string, number>; ts: number }>("aly_rates", { data: {}, ts: 0 });
+    if (Object.keys(cached.data).length > 0) {
+      setRates(cached.data);
+      if (Date.now() - cached.ts < 3600000) return;
+    }
+    fetch("https://open.er-api.com/v6/latest/USD")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.result === "success" && d.rates) {
+          setRates(d.rates);
+          writeLS("aly_rates", { data: d.rates, ts: Date.now() });
+        }
+      })
+      .catch(() => {});
+  }, []);
+  return rates;
+}
+
+export function convertCurrency(amount: number, from: string, to: string, rates: Record<string, number>): number {
+  if (from === to || !rates || Object.keys(rates).length === 0) return amount;
+  const fromRate = rates[from] || 1;
+  const toRate = rates[to] || 1;
+  return (amount / fromRate) * toRate;
+}
+
 // ── computed money helpers ──
 
-export function balance(txns: Txn[]) {
-  return txns.reduce((s, t) => s + (t.isIncome ? t.amount : -t.amount), 0);
+const cv = (t: Txn, dc: string, rates: Record<string, number>) =>
+  convertCurrency(t.amount, t.currency || dc, dc, rates);
+
+export function balance(txns: Txn[], rates: Record<string, number>, dc: string) {
+  return txns.reduce((s, t) => s + (t.isIncome ? cv(t, dc, rates) : -cv(t, dc, rates)), 0);
 }
-export function monthIncome(txns: Txn[]) {
+export function monthIncome(txns: Txn[], rates: Record<string, number>, dc: string) {
   const mk = month();
-  return txns.filter((t) => t.isIncome && t.date.slice(0, 7) === mk).reduce((s, t) => s + t.amount, 0);
+  return txns.filter((t) => t.isIncome && t.date.slice(0, 7) === mk).reduce((s, t) => s + cv(t, dc, rates), 0);
 }
-export function todayIncome(txns: Txn[]) {
+export function todayIncome(txns: Txn[], rates: Record<string, number>, dc: string) {
   const dk = today();
-  return txns.filter((t) => t.isIncome && t.date.slice(0, 10) === dk).reduce((s, t) => s + t.amount, 0);
+  return txns.filter((t) => t.isIncome && t.date.slice(0, 10) === dk).reduce((s, t) => s + cv(t, dc, rates), 0);
 }
-export function topSources(txns: Txn[], limit = 5) {
+export function topSources(txns: Txn[], rates: Record<string, number>, dc: string, limit = 5) {
   const map: Record<string, number> = {};
-  txns.filter((t) => t.isIncome).forEach((t) => { const k = t.source || "—"; map[k] = (map[k] || 0) + t.amount; });
+  txns.filter((t) => t.isIncome).forEach((t) => { const k = t.source || "—"; map[k] = (map[k] || 0) + cv(t, dc, rates); });
   return Object.entries(map).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total).slice(0, limit);
 }
 
 const keyOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-export function periodSeries(txns: Txn[], range: Range, lang: "ru" | "en") {
+export function periodSeries(txns: Txn[], range: Range, lang: "ru" | "en", rates: Record<string, number>, dc: string) {
   const loc = lang === "ru" ? "ru" : "en";
   const income: number[] = [], expense: number[] = [], labels: string[] = [];
 
@@ -227,8 +260,8 @@ export function periodSeries(txns: Txn[], range: Range, lang: "ru" | "en") {
       const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
       const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const m = txns.filter((t) => t.date.slice(0, 7) === mk);
-      income.push(m.filter((t) => t.isIncome).reduce((s, t) => s + t.amount, 0));
-      expense.push(m.filter((t) => !t.isIncome).reduce((s, t) => s + t.amount, 0));
+      income.push(m.filter((t) => t.isIncome).reduce((s, t) => s + cv(t, dc, rates), 0));
+      expense.push(m.filter((t) => !t.isIncome).reduce((s, t) => s + cv(t, dc, rates), 0));
       labels.push(d.toLocaleDateString(loc, { month: "short" }));
     }
   } else {
@@ -237,8 +270,8 @@ export function periodSeries(txns: Txn[], range: Range, lang: "ru" | "en") {
       const d = new Date(); d.setDate(d.getDate() - i);
       const dk = keyOf(d);
       const day = txns.filter((t) => t.date.slice(0, 10) === dk);
-      income.push(day.filter((t) => t.isIncome).reduce((s, t) => s + t.amount, 0));
-      expense.push(day.filter((t) => !t.isIncome).reduce((s, t) => s + t.amount, 0));
+      income.push(day.filter((t) => t.isIncome).reduce((s, t) => s + cv(t, dc, rates), 0));
+      expense.push(day.filter((t) => !t.isIncome).reduce((s, t) => s + cv(t, dc, rates), 0));
       labels.push(range === "week" ? d.toLocaleDateString(loc, { weekday: "short" }) : String(d.getDate()));
     }
   }

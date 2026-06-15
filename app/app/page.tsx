@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import {
-  useTxns, useIdeas, useGoal, useFocus, useDayLog, useSettings, today,
-  balance, monthIncome, todayIncome, topSources, periodSeries, formatMoney,
+  useTxns, useIdeas, useGoal, useFocus, useDayLog, useSettings, useRates, today,
+  balance, monthIncome, todayIncome, topSources, periodSeries, formatMoney, convertCurrency,
   type Txn, type Idea, type Range,
 } from "@/lib/store";
 import { Card, Sheet, ProgressRing, LineChart, CatIcon, t } from "@/components/pwa/ui";
@@ -30,7 +30,7 @@ export default function AppPage() {
     const tm = setTimeout(() => {
       setSplash(false);
       setOnboarding(!settings.onboarded);
-    }, 2500);
+    }, 2600);
     return () => clearTimeout(tm);
   }, [settings.onboarded]);
 
@@ -56,8 +56,8 @@ export default function AppPage() {
 function Splash() {
   return (
     <div className="flex items-center justify-center h-full bg-black">
-      <div className="splash-word text-[64px] font-semibold tracking-[-0.04em] text-white rounded-font">
-        aly<span className="splash-osha">osha</span>
+      <div className="splash-word flex text-[64px] font-semibold tracking-[-0.04em] text-white rounded-font">
+        <span>aly</span><span className="splash-osha">osha</span>
       </div>
     </div>
   );
@@ -174,8 +174,10 @@ function HomeTab() {
   const [showGoal, setShowGoal] = useState(false);
   const [showReport, setShowReport] = useState(false);
 
-  const fm = (v: number, plus = false) => formatMoney(v, settings.currency, plus);
-  const bal = balance(txns), mi = monthIncome(txns), ti = todayIncome(txns);
+  const rates = useRates();
+  const cur = settings.currency;
+  const fm = (v: number, plus = false) => formatMoney(v, cur, plus);
+  const bal = balance(txns, rates, cur), mi = monthIncome(txns, rates, cur), ti = todayIncome(txns, rates, cur);
   const hour = new Date().getHours();
   const greeting = hour >= 5 && hour < 12 ? t(lang, "Good morning", "Доброе утро")
     : hour < 17 ? t(lang, "Good afternoon", "Добрый день")
@@ -303,7 +305,7 @@ function AddTxnSheet({ open, onClose, isIncome: preset }: { open: boolean; onClo
 
   const save = () => {
     if (value <= 0) return;
-    add({ amount: value, isIncome, source: source.trim(), note: note.trim(), date: new Date(date + "T12:00:00").toISOString() });
+    add({ amount: value, isIncome, source: source.trim(), note: note.trim(), currency: settings.currency, date: new Date(date + "T12:00:00").toISOString() });
     onClose();
   };
 
@@ -394,8 +396,9 @@ function ReportSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
   const { settings } = useSettings();
   const lang = settings.lang;
   const { txns } = useTxns();
+  const rates = useRates();
   const { log, saveReport } = useDayLog();
-  const [earned, setEarned] = useState(log?.earned ? String(log.earned) : (todayIncome(txns) || ""));
+  const [earned, setEarned] = useState(log?.earned ? String(log.earned) : (todayIncome(txns, rates, settings.currency) || ""));
   const [didToday, setDidToday] = useState(log?.didToday ?? "");
   const [didntWork, setDidntWork] = useState(log?.didntWork ?? "");
   const [planTomorrow, setPlanTomorrow] = useState(log?.planTomorrow ?? "");
@@ -436,14 +439,16 @@ function MoneyTab() {
   const { settings } = useSettings();
   const lang = settings.lang;
   const { txns, remove } = useTxns();
+  const rates = useRates();
+  const cur = settings.currency;
   const [range, setRange] = useState<Range>("week");
   const [showAdd, setShowAdd] = useState(false);
-  const fm = (v: number, plus = false) => formatMoney(v, settings.currency, plus);
+  const fm = (v: number, plus = false) => formatMoney(v, cur, plus);
 
-  const series = periodSeries(txns, range, lang);
+  const series = periodSeries(txns, range, lang, rates, cur);
   const rangeIncome = series.income.reduce((s, v) => s + v, 0);
   const rangeExpense = series.expense.reduce((s, v) => s + v, 0);
-  const tops = topSources(txns);
+  const tops = topSources(txns, rates, cur);
   const periodLabel = range === "week" ? t(lang, "Income · this week", "Доход · за неделю")
     : range === "month" ? t(lang, "Income · this month", "Доход · за месяц") : t(lang, "Income · this year", "Доход · за год");
 
@@ -505,6 +510,8 @@ function MoneyTab() {
             </Card>
           )}
 
+          <ExchangeCard lang={lang} rates={rates} />
+
           <h3 className="text-[19px] font-semibold rounded-font pt-1">{t(lang, "History", "История")}</h3>
           {grouped.map(([dk, items]) => (
             <div key={dk}>
@@ -519,7 +526,10 @@ function MoneyTab() {
                       <p className="text-sm font-medium truncate">{tx.source || t(lang, "No source", "Без источника")}</p>
                       {tx.note && <p className="text-xs text-white/40 truncate">{tx.note}</p>}
                     </div>
-                    <span className={`text-sm font-semibold rounded-font ${tx.isIncome ? "" : "text-white/40"}`}>{fm(tx.isIncome ? tx.amount : -tx.amount, true)}</span>
+                    <div className="text-right">
+                      <span className={`text-sm font-semibold rounded-font ${tx.isIncome ? "" : "text-white/40"}`}>{formatMoney(tx.isIncome ? tx.amount : -tx.amount, tx.currency || cur, true)}</span>
+                      {(tx.currency && tx.currency !== cur) && <p className="text-[10px] text-white/25">{fm(tx.isIncome ? convertCurrency(tx.amount, tx.currency, cur, rates) : -convertCurrency(tx.amount, tx.currency, cur, rates))}</p>}
+                    </div>
                     <button onClick={() => remove(tx.id)} className="text-white/20 ml-1 p-1">
                       <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M4 7h16M9 7V4h6v3m-7 0v13h8V7" /></svg>
                     </button>
@@ -533,6 +543,72 @@ function MoneyTab() {
 
       <AddTxnSheet open={showAdd} onClose={() => setShowAdd(false)} isIncome={true} />
     </div>
+  );
+}
+
+function ExchangeCard({ lang, rates }: { lang: "ru" | "en"; rates: Record<string, number> }) {
+  const [fromCur, setFromCur] = useState("USD");
+  const [toCur, setToCur] = useState("RUB");
+  const [inputVal, setInputVal] = useState("1");
+  const hasRates = Object.keys(rates).length > 0;
+  const parsed = parseFloat(inputVal.replace(",", ".")) || 0;
+  const converted = hasRates ? convertCurrency(parsed, fromCur, toCur, rates) : 0;
+
+  const swap = () => { setFromCur(toCur); setToCur(fromCur); };
+
+  const fmtRate = (from: string, to: string) => {
+    if (!hasRates) return "—";
+    const r = convertCurrency(1, from, to, rates);
+    return r < 1 ? r.toFixed(4) : r.toFixed(2);
+  };
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[19px] font-semibold rounded-font">{t(lang, "Exchange rates", "Курсы валют")}</h3>
+        {hasRates && <span className="text-[10px] text-white/20 rounded-font">live</span>}
+      </div>
+      {hasRates ? (
+        <>
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            {[["USD", "RUB"], ["USD", "TJS"], ["RUB", "TJS"]].map(([a, b]) => (
+              <div key={a + b} className="bg-white/[0.04] rounded-xl px-3 py-2.5 text-center">
+                <p className="text-[10px] text-white/30">{a}/{b}</p>
+                <p className="text-sm font-semibold rounded-font mt-0.5">{fmtRate(a, b)}</p>
+              </div>
+            ))}
+          </div>
+          <div className="bg-[#16171D] rounded-2xl p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <div className="flex gap-1.5 mb-2">
+                  {currencies.map((c) => (
+                    <button key={c} onClick={() => { setFromCur(c); if (c === toCur) setToCur(fromCur); }}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${fromCur === c ? "bg-white text-black" : "bg-white/[0.06] text-white/40"}`}>{c}</button>
+                  ))}
+                </div>
+                <input value={inputVal} onChange={(e) => setInputVal(e.target.value)} inputMode="decimal" placeholder="0"
+                  className="w-full bg-transparent outline-none text-[28px] font-bold rounded-font placeholder:text-white/20" />
+              </div>
+              <button onClick={swap} className="text-white/30 p-2 active:scale-90 transition-transform">
+                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 12l-3-3m3 3l3-3M17 8v12m0-12l3 3m-3-3l-3 3" /></svg>
+              </button>
+              <div className="flex-1 text-right">
+                <div className="flex gap-1.5 justify-end mb-2">
+                  {currencies.map((c) => (
+                    <button key={c} onClick={() => { setToCur(c); if (c === fromCur) setFromCur(toCur); }}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${toCur === c ? "bg-white text-black" : "bg-white/[0.06] text-white/40"}`}>{c}</button>
+                  ))}
+                </div>
+                <p className="text-[28px] font-bold rounded-font text-white/70">{converted < 1 ? converted.toFixed(4) : converted.toFixed(2)}</p>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-white/30">{t(lang, "Loading rates…", "Загрузка курсов…")}</p>
+      )}
+    </Card>
   );
 }
 
