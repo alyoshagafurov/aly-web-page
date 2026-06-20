@@ -2,21 +2,19 @@
 
 import { useState, useEffect } from "react";
 import {
-  useTxns, useIdeas, useGoal, useFocus, useDayLog, useSettings, useRates, today,
-  balance, monthIncome, todayIncome, topSources, periodSeries, formatMoney, convertCurrency,
-  type Txn, type Idea, type Range,
+  useTxns, useGoal, useFocus, useDayLog, useSettings, useRates, useHighlights, today,
+  balance, monthIncome, todayIncome, formatMoney,
+  runwayMonths, monthsToGoal, weekSummary,
+  type Txn,
 } from "@/lib/store";
-import { Card, Sheet, ProgressRing, LineChart, CatIcon, t } from "@/components/pwa/ui";
+import { Card, Sheet, ProgressRing, CatIcon, t } from "@/components/pwa/ui";
 import Mind from "@/components/pwa/Mind";
+import MoneyTab from "@/components/pwa/MoneyTab";
+import IdeasTab from "@/components/pwa/IdeasTab";
+import SettingsTab from "@/components/pwa/SettingsTab";
+import AddTxnSheet from "@/components/pwa/AddTxnSheet";
 
 type Tab = "home" | "money" | "ideas" | "mind" | "settings";
-
-const ideaCats = [
-  { id: "business" as const, en: "Business", ru: "Бизнес", icon: "💼" },
-  { id: "website" as const, en: "Websites", ru: "Сайты", icon: "🌐" },
-  { id: "ai" as const, en: "AI / Bots", ru: "AI / Боты", icon: "✦" },
-  { id: "thought" as const, en: "Thoughts", ru: "Мысли", icon: "◌" },
-];
 const currencies = ["USD", "RUB", "TJS"];
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ROOT
@@ -91,14 +89,22 @@ function Onboarding({ lang, onDone }: { lang: "ru" | "en"; onDone: () => void })
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ FOCUS SETUP
 function FocusSetup({ lang, onDone }: { lang: "ru" | "en"; onDone: () => void }) {
-  const { tasks, setText } = useFocus();
-  const [local, setLocal] = useState(() => tasks.map((tk) => ({ id: tk.id, text: tk.text })));
+  const { settings } = useSettings();
+  const { tasks, setText, setFinancial } = useFocus();
+  const [local, setLocal] = useState(() => tasks.map((tk) => ({ id: tk.id, text: tk.text, financial: false, amount: "" })));
   const allFilled = local.every((tk) => tk.text.trim());
 
   const handleDone = () => {
-    local.forEach((l) => setText(l.id, l.text));
+    local.forEach((l) => {
+      setText(l.id, l.text);
+      if (l.financial && parseFloat(l.amount.replace(",", ".")) > 0) {
+        setFinancial(l.id, true, parseFloat(l.amount.replace(",", ".")), settings.currency);
+      }
+    });
     onDone();
   };
+
+  const toggleFin = (id: string) => setLocal((prev) => prev.map((tk) => (tk.id === id ? { ...tk, financial: !tk.financial, amount: tk.financial ? "" : tk.amount } : tk)));
 
   return (
     <div className="flex flex-col h-full bg-black px-6">
@@ -111,15 +117,33 @@ function FocusSetup({ lang, onDone }: { lang: "ru" | "en"; onDone: () => void })
         </p>
         <div className="space-y-3 mt-10">
           {local.map((task, i) => (
-            <div key={task.id} className="flex items-center gap-3">
-              <span className="text-white/15 text-sm font-bold rounded-font w-5 text-right">{i + 1}</span>
-              <input
-                value={task.text}
-                onChange={(e) => setLocal((prev) => prev.map((tk) => (tk.id === task.id ? { ...tk, text: e.target.value } : tk)))}
-                placeholder={t(lang, "Important task…", "Важная задача…")}
-                autoFocus={i === 0}
-                className="flex-1 bg-[#16171D] rounded-2xl px-4 py-4 outline-none placeholder:text-white/20 text-[17px] border border-white/[0.06]"
-              />
+            <div key={task.id} className="space-y-2">
+              <div className="flex items-center gap-3">
+                <span className="text-white/15 text-sm font-bold rounded-font w-5 text-right">{i + 1}</span>
+                <input
+                  value={task.text}
+                  onChange={(e) => setLocal((prev) => prev.map((tk) => (tk.id === task.id ? { ...tk, text: e.target.value } : tk)))}
+                  placeholder={t(lang, "Important task…", "Важная задача…")}
+                  autoFocus={i === 0}
+                  className="flex-1 bg-[#16171D] rounded-2xl px-4 py-4 outline-none placeholder:text-white/20 text-[17px] border border-white/[0.06]"
+                />
+                <button onClick={() => toggleFin(task.id)}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold transition-colors ${task.financial ? "bg-white text-black" : "bg-white/[0.06] text-white/25"}`}>
+                  {settings.currency === "RUB" ? "₽" : settings.currency === "TJS" ? "С" : "$"}
+                </button>
+              </div>
+              {task.financial && (
+                <div className="flex items-center gap-3 ml-8">
+                  <input
+                    value={task.amount}
+                    onChange={(e) => setLocal((prev) => prev.map((tk) => (tk.id === task.id ? { ...tk, amount: e.target.value } : tk)))}
+                    inputMode="decimal"
+                    placeholder={t(lang, "Amount…", "Сумма…")}
+                    className="flex-1 bg-[#16171D] rounded-xl px-4 py-3 outline-none placeholder:text-white/20 text-[15px] border border-white/[0.06]"
+                  />
+                  <span className="text-xs text-white/30">{settings.currency}</span>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -167,12 +191,14 @@ const GearIcon = () => <svg viewBox="0 0 24 24" className="w-[22px] h-[22px]" fi
 function HomeTab() {
   const { settings } = useSettings();
   const lang = settings.lang;
-  const { txns } = useTxns();
+  const { txns, add: addTxn } = useTxns();
   const { goal } = useGoal();
-  const { tasks, fireScore, setText, toggle } = useFocus();
+  const { tasks, allTasks, fireScore, freezesLeft, setText, toggle, linkTxn } = useFocus();
+  const { highlights } = useHighlights();
   const [add, setAdd] = useState<null | boolean>(null);
   const [showGoal, setShowGoal] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [showWeek, setShowWeek] = useState(false);
 
   const rates = useRates();
   const cur = settings.currency;
@@ -186,6 +212,17 @@ function HomeTab() {
   const total = tasks.filter((x) => x.text).length;
   const monthName = new Date().toLocaleDateString(lang === "ru" ? "ru" : "en", { month: "long" });
 
+  const handleToggle = (task: typeof tasks[0]) => {
+    if (!task.text) return;
+    const willBeDone = !task.done;
+    toggle(task.id);
+    if (willBeDone && task.financial && task.linkedAmount && !task.linkedTxnId) {
+      const txnId = crypto.randomUUID();
+      addTxn({ amount: task.linkedAmount, isIncome: false, source: task.text, note: t(lang, "From daily goal", "Из дневной цели"), currency: task.linkedCurrency || cur, date: new Date().toISOString() });
+      linkTxn(task.id, txnId);
+    }
+  };
+
   return (
     <div className="px-5 pt-14 pb-6 space-y-[18px]">
       <div className="flex items-center justify-between pt-2">
@@ -193,11 +230,18 @@ function HomeTab() {
           <h1 className="text-[22px] font-bold rounded-font">{greeting}</h1>
           <p className="text-sm text-white/50">{new Date().toLocaleDateString(lang === "ru" ? "ru" : "en", { weekday: "short", day: "numeric", month: "short" })}</p>
         </div>
-        {fireScore > 0 && (
-          <div className="flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-2">
-            <CatIcon name="flame" className="w-4 h-4" /><span className="text-sm font-bold rounded-font">{Number.isInteger(fireScore) ? fireScore : fireScore.toFixed(1)}</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {freezesLeft > 0 && (
+            <div className="flex items-center gap-1 text-white/25 text-xs rounded-font">
+              <span>❄</span>{freezesLeft}
+            </div>
+          )}
+          {fireScore > 0 && (
+            <div className="flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-2">
+              <CatIcon name="flame" className="w-4 h-4" /><span className="text-sm font-bold rounded-font">{Number.isInteger(fireScore) ? fireScore : fireScore.toFixed(1)}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* balance */}
@@ -211,6 +255,25 @@ function HomeTab() {
           <MiniStat label={t(lang, "This month", "За месяц")} value={fm(mi, mi > 0)} />
         </div>
       </Card>
+
+      {/* runway & insights (point 6 & 7) */}
+      {txns.length > 0 && (() => {
+        const rw = runwayMonths(txns, rates, cur);
+        const mtg = settings.savingsGoal ? monthsToGoal(txns, rates, cur, settings.savingsGoal) : null;
+        if (rw === null && mtg === null) return null;
+        return (
+          <div className="flex gap-2.5">
+            {rw !== null && (
+              <MiniStat label={t(lang, "Runway", "Подушка")}
+                value={rw >= 12 ? `${Math.round(rw)} ${t(lang, "mo", "мес")}` : `${rw.toFixed(1)} ${t(lang, "mo", "мес")}`} />
+            )}
+            {mtg !== null && mtg > 0 && (
+              <MiniStat label={t(lang, "Goal in", "Цель через")}
+                value={`${mtg.toFixed(1)} ${t(lang, "mo", "мес")}`} />
+            )}
+          </div>
+        );
+      })()}
 
       {/* goal */}
       <Card onClick={() => setShowGoal(true)}>
@@ -251,7 +314,7 @@ function HomeTab() {
         <div className="space-y-2.5">
           {tasks.map((task) => (
             <div key={task.id} className="flex items-center gap-3">
-              <button onClick={() => task.text && toggle(task.id)} className={task.done ? "text-white" : "text-white/25"}>
+              <button onClick={() => handleToggle(task)} className={task.done ? "text-white" : "text-white/25"}>
                 {task.done
                   ? <svg viewBox="0 0 24 24" className="w-[22px] h-[22px]" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm-2 15l-5-5 1.4-1.4L10 14.2l7.6-7.6L19 8l-9 9z" /></svg>
                   : <svg viewBox="0 0 24 24" className="w-[22px] h-[22px]" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="9" /></svg>}
@@ -259,23 +322,36 @@ function HomeTab() {
               <input value={task.text} onChange={(e) => setText(task.id, e.target.value)}
                 placeholder={t(lang, "Important task…", "Важная задача…")}
                 className={`flex-1 bg-transparent outline-none placeholder:text-white/20 ${task.done ? "line-through text-white/30" : ""}`} />
+              {task.financial && (
+                <span className="text-[11px] text-white/30 font-semibold rounded-font shrink-0">
+                  {formatMoney(task.linkedAmount || 0, task.linkedCurrency || cur)}
+                </span>
+              )}
             </div>
           ))}
         </div>
       </Card>
 
-      {/* daily report */}
-      <button onClick={() => setShowReport(true)} className="w-full">
-        <Card className="flex items-center gap-3">
-          <CatIcon name="leaf" className="w-5 h-5 text-white/80" />
-          <span className="font-medium">{t(lang, "Daily report", "Ежедневный отчёт")}</span>
-          <span className="ml-auto text-white/25">›</span>
-        </Card>
-      </button>
+      {/* daily report & weekly review */}
+      <div className="grid grid-cols-2 gap-3">
+        <button onClick={() => setShowReport(true)} className="w-full">
+          <Card className="flex items-center gap-2.5 h-full">
+            <CatIcon name="leaf" className="w-5 h-5 text-white/80" />
+            <span className="font-medium text-sm">{t(lang, "Daily report", "Ежедневный отчёт")}</span>
+          </Card>
+        </button>
+        <button onClick={() => setShowWeek(true)} className="w-full">
+          <Card className="flex items-center gap-2.5 h-full">
+            <CatIcon name="eye" className="w-5 h-5 text-white/80" />
+            <span className="font-medium text-sm">{t(lang, "Week review", "Обзор недели")}</span>
+          </Card>
+        </button>
+      </div>
 
       {add !== null && <AddTxnSheet open onClose={() => setAdd(null)} isIncome={add} />}
       <GoalSheet open={showGoal} onClose={() => setShowGoal(false)} />
       <ReportSheet open={showReport} onClose={() => setShowReport(false)} />
+      <WeekReviewSheet open={showWeek} onClose={() => setShowWeek(false)} lang={lang} txns={txns} tasks={allTasks} highlights={highlights} rates={rates} cur={cur} />
     </div>
   );
 }
@@ -286,88 +362,6 @@ function MiniStat({ label, value }: { label: string; value: string }) {
       <p className="text-[11px] text-white/30">{label}</p>
       <p className="text-[15px] font-semibold rounded-font mt-0.5">{value}</p>
     </div>
-  );
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ADD TXN
-function AddTxnSheet({ open, onClose, isIncome: preset }: { open: boolean; onClose: () => void; isIncome: boolean }) {
-  const { settings, setCurrency } = useSettings();
-  const lang = settings.lang;
-  const { txns, add } = useTxns();
-  const [isIncome, setIsIncome] = useState(preset);
-  const [amount, setAmount] = useState("");
-  const [source, setSource] = useState("");
-  const [note, setNote] = useState("");
-  const [date, setDate] = useState(today);
-
-  const value = parseFloat(amount.replace(",", ".")) || 0;
-  const suggestions = [...new Set(txns.filter((x) => x.source).map((x) => x.source))].slice(0, 8);
-
-  const save = () => {
-    if (value <= 0) return;
-    add({ amount: value, isIncome, source: source.trim(), note: note.trim(), currency: settings.currency, date: new Date(date + "T12:00:00").toISOString() });
-    onClose();
-  };
-
-  return (
-    <Sheet open={open} onClose={onClose}
-      title={isIncome ? t(lang, "New income", "Новый доход") : t(lang, "New expense", "Новый расход")}
-      action={<button onClick={save} disabled={value <= 0} className={`text-[15px] font-semibold ${value > 0 ? "text-white" : "text-white/25"}`}>{t(lang, "Save", "Готово")}</button>}>
-      <div className="space-y-5 pt-1">
-        <div className="flex gap-1.5 p-1.5 bg-[#16171D] rounded-[20px]">
-          {[true, false].map((inc) => (
-            <button key={String(inc)} onClick={() => setIsIncome(inc)}
-              className={`flex-1 py-3 rounded-2xl text-sm font-semibold transition-colors ${isIncome === inc ? "bg-white text-black" : "text-white/50"}`}>
-              {inc ? t(lang, "Income", "Доход") : t(lang, "Expense", "Расход")}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-col items-center py-3">
-          <div className="flex items-baseline">
-            <span className={`text-[40px] font-bold rounded-font ${isIncome ? "text-white" : "text-white/50"}`}>{isIncome ? "+" : "−"}</span>
-            <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="0" autoFocus
-              className="text-[56px] font-bold rounded-font bg-transparent outline-none text-center w-auto max-w-[240px] placeholder:text-white/20"
-              style={{ width: `${Math.max(amount.length, 1) + 1}ch` }} />
-          </div>
-          <div className="flex gap-2 mt-1">
-            {currencies.map((c) => (
-              <button key={c} onClick={() => setCurrency(c)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${settings.currency === c ? "bg-white text-black" : "bg-white/[0.06] text-white/40"}`}>
-                {c}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <p className="text-[13px] text-white/50 font-medium mb-2">{t(lang, "Source", "Источник")}</p>
-          <input value={source} onChange={(e) => setSource(e.target.value)}
-            placeholder={t(lang, "e.g. client website", "Например: сайт для клиента")}
-            className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none placeholder:text-white/20" />
-          {suggestions.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto no-scrollbar mt-2.5">
-              {suggestions.map((s) => (
-                <button key={s} onClick={() => setSource(s)}
-                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium ${source === s ? "bg-white text-black" : "bg-white/[0.05] text-white/55"}`}>{s}</button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div>
-          <p className="text-[13px] text-white/50 font-medium mb-2">{t(lang, "Note", "Заметка")}</p>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t(lang, "Short note…", "Короткая заметка…")}
-            className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none placeholder:text-white/20" />
-        </div>
-
-        <div>
-          <p className="text-[13px] text-white/50 font-medium mb-2">{t(lang, "Date", "Дата")}</p>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
-            className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none text-white/80 [color-scheme:dark]" />
-        </div>
-      </div>
-    </Sheet>
   );
 }
 
@@ -397,326 +391,120 @@ function ReportSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
   const lang = settings.lang;
   const { txns } = useTxns();
   const rates = useRates();
+  const { tasks } = useFocus();
   const { log, saveReport } = useDayLog();
   const [earned, setEarned] = useState(log?.earned ? String(log.earned) : (todayIncome(txns, rates, settings.currency) || ""));
   const [didToday, setDidToday] = useState(log?.didToday ?? "");
   const [didntWork, setDidntWork] = useState(log?.didntWork ?? "");
   const [planTomorrow, setPlanTomorrow] = useState(log?.planTomorrow ?? "");
+  const [reflection, setReflection] = useState(log?.reflection ?? "");
 
   const save = () => {
-    saveReport({ earned: parseFloat(String(earned).replace(",", ".")) || 0, didToday, didntWork, planTomorrow });
+    saveReport({ earned: parseFloat(String(earned).replace(",", ".")) || 0, didToday, didntWork, planTomorrow, reflection: reflection.trim() });
     onClose();
   };
 
-  const Field = ({ label, value, set, placeholder, big, decimal }: { label: string; value: string; set: (v: string) => void; placeholder: string; big?: boolean; decimal?: boolean }) => (
-    <div>
-      <p className="text-[13px] text-white/50 font-medium mb-2">{label}</p>
-      {big ? (
-        <textarea value={value} onChange={(e) => set(e.target.value)} placeholder={placeholder} rows={2}
-          className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none placeholder:text-white/20 resize-none" />
-      ) : (
-        <input value={value} onChange={(e) => set(e.target.value)} placeholder={placeholder} inputMode={decimal ? "decimal" : "text"}
-          className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none placeholder:text-white/20" />
-      )}
-    </div>
-  );
+  const filled = tasks.filter((tk) => tk.text.trim());
+  const done = filled.filter((tk) => tk.done).length;
 
   return (
     <Sheet open={open} onClose={onClose} title={t(lang, "Daily report", "Отчёт за день")}
       action={<button onClick={save} className="text-[15px] font-semibold text-white">{t(lang, "Save", "Готово")}</button>}>
       <div className="space-y-4 pt-1">
-        <Field label={t(lang, "How much did you earn today?", "Сколько заработал сегодня?")} value={String(earned)} set={(v) => setEarned(v)} placeholder={settings.currency} decimal />
-        <Field label={t(lang, "What did you do today?", "Что сделал сегодня?")} value={didToday} set={setDidToday} placeholder={t(lang, "Main wins…", "Главные результаты…")} big />
-        <Field label={t(lang, "What didn't work out?", "Что не получилось?")} value={didntWork} set={setDidntWork} placeholder={t(lang, "What to improve…", "Чему научился…")} big />
-        <Field label={t(lang, "Plan for tomorrow", "План на завтра")} value={planTomorrow} set={setPlanTomorrow} placeholder={t(lang, "Next steps…", "3 шага вперёд…")} big />
+        {filled.length > 0 && (
+          <div>
+            <p className="text-[13px] text-white/50 font-medium mb-2">{t(lang, "Today's tasks", "Задачи дня")} — {done}/{filled.length}</p>
+            <div className="space-y-2">
+              {filled.map((tk) => (
+                <div key={tk.id} className="flex items-center gap-2.5">
+                  {tk.done
+                    ? <svg viewBox="0 0 24 24" className="w-5 h-5 text-white shrink-0" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm-2 15l-5-5 1.4-1.4L10 14.2l7.6-7.6L19 8l-9 9z" /></svg>
+                    : <svg viewBox="0 0 24 24" className="w-5 h-5 text-white/25 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="9" /></svg>}
+                  <span className={`text-sm ${tk.done ? "text-white/40 line-through" : ""}`}>{tk.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div>
+          <p className="text-[13px] text-white/50 font-medium mb-2">{t(lang, "Why did it work / not work?", "Почему получилось / нет?")}</p>
+          <input value={reflection} onChange={(e) => setReflection(e.target.value)}
+            placeholder={t(lang, "One sentence…", "Одно предложение…")}
+            className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none placeholder:text-white/20" />
+        </div>
+        <div>
+          <p className="text-[13px] text-white/50 font-medium mb-2">{t(lang, "How much did you earn today?", "Сколько заработал сегодня?")}</p>
+          <input value={String(earned)} onChange={(e) => setEarned(e.target.value)} placeholder={settings.currency} inputMode="decimal"
+            className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none placeholder:text-white/20" />
+        </div>
+        <div>
+          <p className="text-[13px] text-white/50 font-medium mb-2">{t(lang, "Plan for tomorrow", "План на завтра")}</p>
+          <textarea value={planTomorrow} onChange={(e) => setPlanTomorrow(e.target.value)} placeholder={t(lang, "Next steps…", "3 шага вперёд…")} rows={2}
+            className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none placeholder:text-white/20 resize-none" />
+        </div>
       </div>
     </Sheet>
   );
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ MONEY
-function MoneyTab() {
-  const { settings } = useSettings();
-  const lang = settings.lang;
-  const { txns, remove } = useTxns();
-  const rates = useRates();
-  const cur = settings.currency;
-  const [range, setRange] = useState<Range>("week");
-  const [showAdd, setShowAdd] = useState(false);
-  const fm = (v: number, plus = false) => formatMoney(v, cur, plus);
-
-  const series = periodSeries(txns, range, lang, rates, cur);
-  const rangeIncome = series.income.reduce((s, v) => s + v, 0);
-  const rangeExpense = series.expense.reduce((s, v) => s + v, 0);
-  const tops = topSources(txns, rates, cur);
-  const periodLabel = range === "week" ? t(lang, "Income · this week", "Доход · за неделю")
-    : range === "month" ? t(lang, "Income · this month", "Доход · за месяц") : t(lang, "Income · this year", "Доход · за год");
-
-  const grouped = Object.entries(
-    txns.reduce<Record<string, Txn[]>>((acc, tx) => { (acc[tx.date.slice(0, 10)] ||= []).push(tx); return acc; }, {})
-  ).sort(([a], [b]) => b.localeCompare(a));
-
-  return (
-    <div className="px-5 pt-14 pb-6">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-[28px] font-bold rounded-font">{t(lang, "Money", "Деньги")}</h1>
-        <button onClick={() => setShowAdd(true)} className="text-white/70 p-1">
-          <svg viewBox="0 0 24 24" className="w-7 h-7" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" /></svg>
-        </button>
-      </div>
-
-      {txns.length === 0 ? (
-        <div className="flex flex-col items-center justify-center pt-24">
-          <div className="w-full max-w-[260px] opacity-50"><LineChart income={[]} labels={[]} height={100} /></div>
-          <h2 className="text-2xl font-semibold mt-8 rounded-font">{t(lang, "Start tracking.", "Начни отслеживать.")}</h2>
-          <p className="text-white/40 mt-2">{t(lang, "Every number is progress.", "Каждая цифра — шаг вперёд.")}</p>
-          <button onClick={() => setShowAdd(true)} className="mt-7 px-9 py-3.5 bg-white text-black font-semibold rounded-full active:scale-[0.97] transition-transform">{t(lang, "Log", "Записать")}</button>
-        </div>
-      ) : (
-        <div className="space-y-[18px]">
-          <Segmented value={range} onChange={setRange}
-            options={[["week", t(lang, "Week", "Неделя")], ["month", t(lang, "Month", "Месяц")], ["year", t(lang, "Year", "Год")]]} />
-
-          <Card padding="p-[22px]">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-white/50 font-medium rounded-font">{periodLabel}</p>
-                <p className="text-[34px] leading-none font-bold rounded-font mt-1.5">{fm(rangeIncome)}</p>
-              </div>
-              {rangeExpense > 0 && (
-                <div className="space-y-1.5">
-                  <Legend label={t(lang, "Income", "Доход")} opacity={0.85} weight={1.8} />
-                  <Legend label={t(lang, "Expense", "Расход")} opacity={0.15} weight={1.2} />
-                </div>
-              )}
-            </div>
-            <div className="mt-6"><LineChart income={series.income} expense={series.expense} labels={series.labels} height={180} /></div>
-          </Card>
-
-          {tops.length > 0 && (
-            <Card>
-              <h3 className="text-[19px] font-semibold rounded-font mb-4">{t(lang, "Top sources", "Лучшие источники")}</h3>
-              <div className="space-y-3.5">
-                {tops.map((s) => (
-                  <div key={s.name}>
-                    <div className="flex justify-between text-sm mb-1.5">
-                      <span className="font-medium">{s.name}</span>
-                      <span className="font-semibold rounded-font">{fm(s.total)}</span>
-                    </div>
-                    <div className="h-[5px] bg-white/[0.07] rounded-full"><div className="h-full bg-white rounded-full" style={{ width: `${(s.total / (tops[0]?.total || 1)) * 100}%` }} /></div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          <ExchangeCard lang={lang} rates={rates} />
-
-          <h3 className="text-[19px] font-semibold rounded-font pt-1">{t(lang, "History", "История")}</h3>
-          {grouped.map(([dk, items]) => (
-            <div key={dk}>
-              <p className="text-xs text-white/30 font-semibold mb-2 ml-1 rounded-font">{new Date(dk + "T12:00:00").toLocaleDateString(lang === "ru" ? "ru" : "en", { weekday: "short", day: "numeric", month: "short" })}</p>
-              <Card padding="p-0" className="divide-y divide-white/[0.06]">
-                {items.map((tx) => (
-                  <div key={tx.id} className="flex items-center gap-3 px-3.5 py-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${tx.isIncome ? "bg-white/10" : "bg-white/[0.04]"}`}>
-                      <span className={tx.isIncome ? "text-white" : "text-white/50"}>{tx.isIncome ? "↙" : "↗"}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{tx.source || t(lang, "No source", "Без источника")}</p>
-                      {tx.note && <p className="text-xs text-white/40 truncate">{tx.note}</p>}
-                    </div>
-                    <div className="text-right">
-                      <span className={`text-sm font-semibold rounded-font ${tx.isIncome ? "" : "text-white/40"}`}>{formatMoney(tx.isIncome ? tx.amount : -tx.amount, tx.currency || cur, true)}</span>
-                      {(tx.currency && tx.currency !== cur) && <p className="text-[10px] text-white/25">{fm(tx.isIncome ? convertCurrency(tx.amount, tx.currency, cur, rates) : -convertCurrency(tx.amount, tx.currency, cur, rates))}</p>}
-                    </div>
-                    <button onClick={() => remove(tx.id)} className="text-white/20 ml-1 p-1">
-                      <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M4 7h16M9 7V4h6v3m-7 0v13h8V7" /></svg>
-                    </button>
-                  </div>
-                ))}
-              </Card>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <AddTxnSheet open={showAdd} onClose={() => setShowAdd(false)} isIncome={true} />
-    </div>
-  );
-}
-
-function ExchangeCard({ lang, rates }: { lang: "ru" | "en"; rates: Record<string, number> }) {
-  const [fromCur, setFromCur] = useState("USD");
-  const [toCur, setToCur] = useState("RUB");
-  const [inputVal, setInputVal] = useState("1");
-  const hasRates = Object.keys(rates).length > 0;
-  const parsed = parseFloat(inputVal.replace(",", ".")) || 0;
-  const converted = hasRates ? convertCurrency(parsed, fromCur, toCur, rates) : 0;
-
-  const swap = () => { setFromCur(toCur); setToCur(fromCur); };
-
-  const fmtRate = (from: string, to: string) => {
-    if (!hasRates) return "—";
-    const r = convertCurrency(1, from, to, rates);
-    return r < 1 ? r.toFixed(4) : r.toFixed(2);
-  };
-
-  return (
-    <Card>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[19px] font-semibold rounded-font">{t(lang, "Exchange rates", "Курсы валют")}</h3>
-        {hasRates && <span className="text-[10px] text-white/20 rounded-font">live</span>}
-      </div>
-      {hasRates ? (
-        <>
-          <div className="grid grid-cols-3 gap-2 mb-4">
-            {[["USD", "RUB"], ["USD", "TJS"], ["RUB", "TJS"]].map(([a, b]) => (
-              <div key={a + b} className="bg-white/[0.04] rounded-xl px-3 py-2.5 text-center">
-                <p className="text-[10px] text-white/30">{a}/{b}</p>
-                <p className="text-sm font-semibold rounded-font mt-0.5">{fmtRate(a, b)}</p>
-              </div>
-            ))}
-          </div>
-          <div className="bg-[#16171D] rounded-2xl p-4 space-y-3">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex gap-1.5">
-                  {currencies.map((c) => (
-                    <button key={c} onClick={() => { setFromCur(c); if (c === toCur) setToCur(fromCur); }}
-                      className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${fromCur === c ? "bg-white text-black" : "bg-white/[0.06] text-white/40"}`}>{c}</button>
-                  ))}
-                </div>
-                <button onClick={swap} className="text-white/30 p-1.5 active:scale-90 transition-transform">
-                  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 12l-3-3m3 3l3-3M17 8v12m0-12l3 3m-3-3l-3 3" /></svg>
-                </button>
-              </div>
-              <input value={inputVal} onChange={(e) => setInputVal(e.target.value)} inputMode="decimal" placeholder="0"
-                className="w-full bg-transparent outline-none text-[32px] font-bold rounded-font placeholder:text-white/20" />
-            </div>
-            <div className="h-px bg-white/[0.06]" />
-            <div>
-              <div className="flex gap-1.5 mb-2">
-                {currencies.map((c) => (
-                  <button key={c} onClick={() => { setToCur(c); if (c === fromCur) setFromCur(toCur); }}
-                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${toCur === c ? "bg-white text-black" : "bg-white/[0.06] text-white/40"}`}>{c}</button>
-                ))}
-              </div>
-              <p className="text-[32px] font-bold rounded-font text-white/60">{converted < 1 ? converted.toFixed(4) : converted.toFixed(2)}</p>
-            </div>
-          </div>
-        </>
-      ) : (
-        <p className="text-sm text-white/30">{t(lang, "Loading rates…", "Загрузка курсов…")}</p>
-      )}
-    </Card>
-  );
-}
-
-function Segmented<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: [T, string][] }) {
-  return (
-    <div className="flex gap-1 p-1 bg-[#16171D] rounded-2xl">
-      {options.map(([v, label]) => (
-        <button key={v} onClick={() => onChange(v)} className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors ${value === v ? "bg-white/10 text-white" : "text-white/40"}`}>{label}</button>
-      ))}
-    </div>
-  );
-}
-
-function Legend({ label, opacity, weight }: { label: string; opacity: number; weight: number }) {
-  return (
-    <div className="flex items-center gap-2 justify-end">
-      <span className="w-4 rounded-full" style={{ height: weight, background: `rgba(255,255,255,${opacity})` }} />
-      <span className="text-xs text-white/30">{label}</span>
-    </div>
-  );
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ IDEAS
-function IdeasTab() {
-  const { settings } = useSettings();
-  const lang = settings.lang;
-  const { ideas, add, update, remove, togglePin } = useIdeas();
-  const [filter, setFilter] = useState<string | null>(null);
-  const [showNew, setShowNew] = useState(false);
-  const [editing, setEditing] = useState<Idea | null>(null);
-
-  const filtered = (filter ? ideas.filter((i) => i.category === filter) : ideas)
-    .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-  return (
-    <div className="px-5 pt-14 pb-6">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-[28px] font-bold rounded-font">{t(lang, "Ideas", "Идеи")}</h1>
-        <button onClick={() => setShowNew(true)} className="text-white/70 p-1">
-          <svg viewBox="0 0 24 24" className="w-7 h-7" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" /></svg>
-        </button>
-      </div>
-
-      <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4 pb-1">
-        <Chip active={!filter} onClick={() => setFilter(null)}>{t(lang, "All", "Все")}</Chip>
-        {ideaCats.map((c) => <Chip key={c.id} active={filter === c.id} onClick={() => setFilter(c.id)}>{c.icon} {c[lang]}</Chip>)}
-      </div>
-
-      {ideas.length === 0 ? (
-        <div className="flex flex-col items-center pt-20 text-center px-4">
-          <span className="text-5xl text-white/10">◌</span>
-          <h2 className="text-2xl font-semibold mt-6 rounded-font">{t(lang, "Every great thing starts as an idea.", "Всё великое начинается с идеи.")}</h2>
-          <p className="text-white/40 mt-2">{t(lang, "Write it down before it fades.", "Запиши, пока помнишь.")}</p>
-          <button onClick={() => setShowNew(true)} className="mt-7 px-9 py-3.5 bg-white text-black font-semibold rounded-full active:scale-[0.97] transition-transform">{t(lang, "Capture", "Записать")}</button>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((idea) => (
-            <Card key={idea.id} onClick={() => setEditing(idea)}>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs">{ideaCats.find((c) => c.id === idea.category)?.icon}</span>
-                <span className="text-xs text-white/45 font-medium">{ideaCats.find((c) => c.id === idea.category)?.[lang]}</span>
-                {idea.pinned && <span className="ml-auto text-white/40 text-xs">📌</span>}
-              </div>
-              <p className="font-semibold">{idea.title || t(lang, "Untitled", "Без названия")}</p>
-              {idea.details && <p className="text-sm text-white/45 mt-1 line-clamp-2">{idea.details}</p>}
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {showNew && <IdeaSheet lang={lang} onClose={() => setShowNew(false)} onSave={(d) => { add(d); setShowNew(false); }} />}
-      {editing && <IdeaSheet lang={lang} idea={editing} onClose={() => setEditing(null)}
-        onSave={(d) => { update(editing.id, d); setEditing(null); }}
-        onDelete={() => { remove(editing.id); setEditing(null); }}
-        onPin={() => { togglePin(editing.id); setEditing(null); }} />}
-    </div>
-  );
-}
-
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button onClick={onClick} className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${active ? "bg-white text-black" : "bg-white/[0.05] text-white/50"}`}>{children}</button>;
-}
-
-function IdeaSheet({ lang, idea, onClose, onSave, onDelete, onPin }: {
-  lang: "ru" | "en"; idea?: Idea; onClose: () => void;
-  onSave: (d: { title: string; details: string; category: Idea["category"] }) => void; onDelete?: () => void; onPin?: () => void;
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ WEEK REVIEW
+function WeekReviewSheet({ open, onClose, lang, txns, tasks, highlights, rates, cur }: {
+  open: boolean; onClose: () => void; lang: "ru" | "en"; txns: Txn[]; tasks: import("@/lib/store").FocusTask[];
+  highlights: import("@/lib/store").Highlight[]; rates: Record<string, number>; cur: string;
 }) {
-  const [title, setTitle] = useState(idea?.title ?? "");
-  const [details, setDetails] = useState(idea?.details ?? "");
-  const [cat, setCat] = useState<Idea["category"]>(idea?.category ?? "business");
-  const canSave = title.trim() || details.trim();
+  if (!open) return null;
+  const w = weekSummary(txns, tasks, highlights, rates, cur);
+  const fm = (v: number) => formatMoney(v, cur);
   return (
-    <Sheet open onClose={onClose} title={idea ? t(lang, "Idea", "Идея") : t(lang, "New idea", "Новая идея")}
-      action={<button onClick={() => canSave && onSave({ title, details, category: cat })} disabled={!canSave} className={`text-[15px] font-semibold ${canSave ? "text-white" : "text-white/25"}`}>{t(lang, "Save", "Готово")}</button>}>
-      <div className="pt-1">
-        <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
-          {ideaCats.map((c) => <Chip key={c.id} active={cat === c.id} onClick={() => setCat(c.id)}>{c.icon} {c[lang]}</Chip>)}
+    <Sheet open={open} onClose={onClose} title={t(lang, "Week review", "Обзор недели")}>
+      <div className="space-y-5 pt-1">
+        <div className="grid grid-cols-3 gap-2.5">
+          <div className="bg-white/[0.04] rounded-xl p-3 text-center">
+            <p className="text-[10px] text-white/30 mb-1">{t(lang, "Fire", "Огонь")}</p>
+            <p className="text-xl font-bold rounded-font">{w.fire > 0 ? `+${w.fire}` : "0"}</p>
+          </div>
+          <div className="bg-white/[0.04] rounded-xl p-3 text-center">
+            <p className="text-[10px] text-white/30 mb-1">{t(lang, "Tasks", "Задачи")}</p>
+            <p className="text-xl font-bold rounded-font">{w.doneCount}/{w.totalCount}</p>
+          </div>
+          <div className="bg-white/[0.04] rounded-xl p-3 text-center">
+            <p className="text-[10px] text-white/30 mb-1">{t(lang, "Days", "Дни")}</p>
+            <p className="text-xl font-bold rounded-font">{w.daysActive}/7</p>
+          </div>
         </div>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t(lang, "Idea title", "Название идеи")} autoFocus
-          className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 text-lg font-semibold outline-none placeholder:text-white/20 mb-3" />
-        <textarea value={details} onChange={(e) => setDetails(e.target.value)} placeholder={t(lang, "Details…", "Подробнее…")} rows={4}
-          className="w-full bg-[#16171D] rounded-2xl px-4 py-3.5 outline-none placeholder:text-white/20 resize-none" />
-        {idea && (
-          <div className="flex gap-3 mt-4">
-            {onPin && <button onClick={onPin} className="flex-1 py-3 bg-white/[0.06] rounded-2xl text-sm text-white/60">{idea.pinned ? t(lang, "Unpin", "Открепить") : t(lang, "Pin", "Закрепить")}</button>}
-            {onDelete && <button onClick={onDelete} className="flex-1 py-3 bg-white/[0.06] rounded-2xl text-sm text-red-400">{t(lang, "Delete", "Удалить")}</button>}
+
+        <div>
+          <p className="text-[13px] text-white/50 font-medium mb-2">{t(lang, "Money this week", "Деньги за неделю")}</p>
+          <div className="flex gap-2.5">
+            <div className="flex-1 bg-white/[0.04] rounded-xl px-3 py-2.5">
+              <p className="text-[10px] text-white/30">{t(lang, "Income", "Доход")}</p>
+              <p className="text-[15px] font-semibold rounded-font mt-0.5">{fm(w.income)}</p>
+            </div>
+            <div className="flex-1 bg-white/[0.04] rounded-xl px-3 py-2.5">
+              <p className="text-[10px] text-white/30">{t(lang, "Expenses", "Расходы")}</p>
+              <p className="text-[15px] font-semibold rounded-font mt-0.5">{fm(w.expense)}</p>
+            </div>
+          </div>
+        </div>
+
+        {w.topExpenses.length > 0 && (
+          <div>
+            <p className="text-[13px] text-white/50 font-medium mb-2">{t(lang, "Where money went", "Куда ушли деньги")}</p>
+            <div className="space-y-2">
+              {w.topExpenses.map((e) => (
+                <div key={e.name} className="flex justify-between text-sm">
+                  <span className="text-white/70">{e.name}</span>
+                  <span className="font-semibold rounded-font">{fm(e.total)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {w.weekHighlights > 0 && (
+          <div className="flex items-center gap-2 text-sm text-white/40">
+            <CatIcon name="quote" className="w-4 h-4" />
+            {w.weekHighlights} {t(lang, "quotes saved", "цитат сохранено")}
           </div>
         )}
       </div>
@@ -724,67 +512,4 @@ function IdeaSheet({ lang, idea, onClose, onSave, onDelete, onPin }: {
   );
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ SETTINGS
-function SettingsTab() {
-  const { settings, setLang, setCurrency } = useSettings();
-  const lang = settings.lang;
-  const [confirmReset, setConfirmReset] = useState(false);
-
-  return (
-    <div className="px-5 pt-14 pb-6 space-y-[18px]">
-      <h1 className="text-[28px] font-bold rounded-font mb-2">{t(lang, "More", "Ещё")}</h1>
-
-      <Section title={t(lang, "Language", "Язык")}>
-        <div className="flex gap-2">
-          {(["en", "ru"] as const).map((l) => (
-            <button key={l} onClick={() => setLang(l)} className={`flex-1 py-3 rounded-xl font-medium transition-colors ${lang === l ? "bg-white text-black" : "bg-white/[0.06] text-white/50"}`}>{l === "en" ? "English" : "Русский"}</button>
-          ))}
-        </div>
-      </Section>
-
-      <Section title={t(lang, "Currency", "Валюта")}>
-        <div className="flex flex-wrap gap-2">
-          {currencies.map((c) => (
-            <button key={c} onClick={() => setCurrency(c)} className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${settings.currency === c ? "bg-white text-black" : "bg-white/[0.06] text-white/50"}`}>{c}</button>
-          ))}
-        </div>
-      </Section>
-
-      <Section title={t(lang, "Sync", "Синхронизация")}>
-        <p className="text-sm text-white/70">{t(lang, "Stored on this device", "Хранится на устройстве")}</p>
-        <p className="text-xs text-white/30 mt-1.5">{t(lang, "Your data lives privately in this browser. Add aly to your home screen to keep it close.", "Данные приватно хранятся в этом браузере. Добавь aly на экран «Домой», чтобы держать под рукой.")}</p>
-      </Section>
-
-      <Section title={t(lang, "About", "О приложении")}>
-        <div className="flex justify-between text-sm"><span>{t(lang, "Version", "Версия")}</span><span className="text-white/40 rounded-font">1.0</span></div>
-        <div className="h-px bg-white/[0.07] my-3" />
-        <button onClick={() => setConfirmReset(true)} className="text-red-400 text-sm font-medium">{t(lang, "Reset all data", "Сбросить все данные")}</button>
-      </Section>
-
-      <p className="text-center text-xs text-white/20 pt-2">aly · {t(lang, "your personal life dashboard", "личный дашборд жизни")}</p>
-
-      {confirmReset && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-6" onClick={() => setConfirmReset(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#1C1E26] rounded-3xl p-6 max-w-sm w-full text-center">
-            <p className="font-semibold mb-2">{t(lang, "Delete all data?", "Удалить все данные?")}</p>
-            <p className="text-sm text-white/40 mb-6">{t(lang, "This cannot be undone.", "Это нельзя отменить.")}</p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmReset(false)} className="flex-1 py-3 bg-white/[0.06] rounded-2xl text-sm">{t(lang, "Cancel", "Отмена")}</button>
-              <button onClick={() => { ["aly_txns", "aly_ideas", "aly_goals", "aly_focus", "aly_logs", "aly_reading", "aly_highlights", "aly_saved"].forEach((k) => localStorage.removeItem(k)); location.reload(); }}
-                className="flex-1 py-3 bg-red-500/20 text-red-400 rounded-2xl text-sm font-medium">{t(lang, "Delete", "Удалить")}</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="text-xs text-white/30 font-semibold uppercase tracking-wider mb-2 ml-1 rounded-font">{title}</p>
-      <Card>{children}</Card>
-    </div>
-  );
-}
+// MoneyTab, IdeasTab, SettingsTab extracted to @/components/pwa/

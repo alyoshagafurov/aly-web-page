@@ -55,11 +55,11 @@ function useLS<T>(key: string, fallback: T): [T, (fn: (prev: T) => T) => void] {
 export interface Txn { id: string; amount: number; isIncome: boolean; source: string; note: string; date: string; currency?: string; }
 export interface Idea { id: string; title: string; details: string; category: "business" | "website" | "ai" | "thought"; pinned: boolean; createdAt: string; }
 export interface Goal { id: string; amount: number; monthKey: string; }
-export interface FocusTask { id: string; text: string; done: boolean; dayKey: string; order: number; }
-export interface DayLog { dayKey: string; productive: boolean | null; earned: number; didToday: string; didntWork: string; planTomorrow: string; }
+export interface FocusTask { id: string; text: string; done: boolean; dayKey: string; order: number; financial?: boolean; linkedAmount?: number; linkedCurrency?: string; linkedTxnId?: string; }
+export interface DayLog { dayKey: string; productive: boolean | null; earned: number; didToday: string; didntWork: string; planTomorrow: string; reflection?: string; }
 export interface ReadingState { bookID: string; chapterIndex: number; paragraphIndex: number; percent: number; updatedAt: string; }
 export interface Highlight { bookID: string; chapterIndex: number; text: string; }
-export interface AppSettings { lang: "ru" | "en"; currency: string; onboarded: boolean; readerFont: number; focusDate: string; }
+export interface AppSettings { lang: "ru" | "en"; currency: string; onboarded: boolean; readerFont: number; focusDate: string; freezesUsed?: number; freezeMonth?: string; savingsGoal?: number; }
 
 export type Range = "week" | "month" | "year";
 
@@ -111,6 +111,10 @@ export function useFocus() {
     writeLS("aly_focus", [...tasks.filter((t) => t.dayKey !== dk), ...todayTasks]);
   }
 
+  const settings = readLS<AppSettings>("aly_settings", { lang: "en", currency: "USD", onboarded: false, readerFont: 19, focusDate: "" });
+  const freezeMonth = today().slice(0, 7);
+  const freezesLeft = 2 - ((settings.freezeMonth === freezeMonth ? settings.freezesUsed : 0) || 0);
+
   const byDay = new Map<string, FocusTask[]>();
   tasks.forEach((task) => {
     if (task.dayKey === dk) return;
@@ -118,20 +122,37 @@ export function useFocus() {
     if (arr) arr.push(task); else byDay.set(task.dayKey, [task]);
   });
   let fire = 0;
+  let freezesNeeded = 0;
   byDay.forEach((dayTasks) => {
     const withText = dayTasks.filter((t) => t.text.trim());
     if (withText.length === 0) return;
     const done = withText.filter((t) => t.done).length;
     if (done >= 3) fire += 1;
     else if (done >= 2) fire += 0.5;
-    else if (done === 0) fire -= 1;
+    else if (done === 0) {
+      if (freezesNeeded < freezesLeft) { freezesNeeded++; }
+      else { fire -= 1; }
+    }
   });
+
+  const tomorrow = () => {
+    const d = new Date(); d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
 
   return {
     tasks: todayTasks,
+    allTasks: tasks,
     fireScore: Math.max(0, fire),
+    freezesLeft,
     setText: (id: string, text: string) => set((p) => p.map((t) => (t.id === id ? { ...t, text } : t))),
     toggle: (id: string) => set((p) => p.map((t) => (t.id === id ? { ...t, done: !t.done } : t))),
+    setFinancial: (id: string, financial: boolean, amount?: number, currency?: string) =>
+      set((p) => p.map((t) => (t.id === id ? { ...t, financial, linkedAmount: amount, linkedCurrency: currency } : t))),
+    linkTxn: (id: string, txnId: string) =>
+      set((p) => p.map((t) => (t.id === id ? { ...t, linkedTxnId: txnId } : t))),
+    addTomorrow: (text: string) =>
+      set((p) => [...p, { id: uid(), text, done: false, dayKey: tomorrow(), order: p.filter((t) => t.dayKey === tomorrow()).length }]),
   };
 }
 
@@ -146,8 +167,9 @@ export function useDayLog() {
       return [...p.filter((l) => l.dayKey !== dk), { ...base, ...patch }];
     });
   return {
+    logs,
     log,
-    saveReport: (r: { earned: number; didToday: string; didntWork: string; planTomorrow: string }) => upsert(r),
+    saveReport: (r: { earned: number; didToday: string; didntWork: string; planTomorrow: string; reflection?: string }) => upsert(r),
   };
 }
 
@@ -160,6 +182,12 @@ export function useSettings() {
     setReaderFont: (readerFont: number) => set((p) => ({ ...p, readerFont: Math.min(24, Math.max(16, readerFont)) })),
     completeOnboarding: () => set((p) => ({ ...p, onboarded: true })),
     setFocusDate: (focusDate: string) => set((p) => ({ ...p, focusDate })),
+    setSavingsGoal: (savingsGoal: number) => set((p) => ({ ...p, savingsGoal })),
+    useFreeze: () => set((p) => {
+      const mk = today().slice(0, 7);
+      const used = (p.freezeMonth === mk ? p.freezesUsed : 0) || 0;
+      return { ...p, freezeMonth: mk, freezesUsed: used + 1 };
+    }),
   };
 }
 
@@ -290,4 +318,72 @@ export function formatMoney(amount: number, currency: string, showPlus = false) 
   if (amount < 0) return "−" + fmt;
   if (showPlus && amount > 0) return "+" + fmt;
   return fmt;
+}
+
+// ── financial insights (point 6 & 7) ──
+
+export function avgMonthlyExpense(txns: Txn[], rates: Record<string, number>, dc: string, months = 3): number {
+  const buckets: Record<string, number> = {};
+  txns.filter((t) => !t.isIncome).forEach((t) => {
+    const mk = t.date.slice(0, 7);
+    buckets[mk] = (buckets[mk] || 0) + cv(t, dc, rates);
+  });
+  const vals = Object.values(buckets).sort().reverse().slice(0, months);
+  return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
+}
+
+export function runwayMonths(txns: Txn[], rates: Record<string, number>, dc: string): number | null {
+  const bal = balance(txns, rates, dc);
+  const avg = avgMonthlyExpense(txns, rates, dc);
+  if (avg <= 0 || bal <= 0) return null;
+  return bal / avg;
+}
+
+export function monthsToGoal(txns: Txn[], rates: Record<string, number>, dc: string, goalAmount: number): number | null {
+  const bal = balance(txns, rates, dc);
+  if (bal >= goalAmount) return 0;
+  const mk = month();
+  const thisMonthIncome = txns.filter((t) => t.isIncome && t.date.slice(0, 7) === mk).reduce((s, t) => s + cv(t, dc, rates), 0);
+  const thisMonthExpense = txns.filter((t) => !t.isIncome && t.date.slice(0, 7) === mk).reduce((s, t) => s + cv(t, dc, rates), 0);
+  const net = thisMonthIncome - thisMonthExpense;
+  if (net <= 0) return null;
+  return (goalAmount - bal) / net;
+}
+
+export function weekSummary(txns: Txn[], tasks: FocusTask[], highlights: Highlight[], rates: Record<string, number>, dc: string) {
+  const now = new Date();
+  const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate() - 7);
+  const weekAgoStr = keyOf(weekAgo);
+  const nowStr = keyOf(now);
+
+  const weekTxns = txns.filter((t) => t.date.slice(0, 10) >= weekAgoStr && t.date.slice(0, 10) <= nowStr);
+  const income = weekTxns.filter((t) => t.isIncome).reduce((s, t) => s + cv(t, dc, rates), 0);
+  const expense = weekTxns.filter((t) => !t.isIncome).reduce((s, t) => s + cv(t, dc, rates), 0);
+
+  const expByCat: Record<string, number> = {};
+  weekTxns.filter((t) => !t.isIncome).forEach((t) => {
+    const k = t.source || "—";
+    expByCat[k] = (expByCat[k] || 0) + cv(t, dc, rates);
+  });
+  const topExpenses = Object.entries(expByCat).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total).slice(0, 5);
+
+  const weekTasks = tasks.filter((t) => t.dayKey >= weekAgoStr && t.dayKey <= nowStr && t.text.trim());
+  const doneCount = weekTasks.filter((t) => t.done).length;
+  const totalCount = weekTasks.length;
+
+  let fire = 0;
+  const byDay = new Map<string, FocusTask[]>();
+  weekTasks.forEach((t) => {
+    const arr = byDay.get(t.dayKey);
+    if (arr) arr.push(t); else byDay.set(t.dayKey, [t]);
+  });
+  byDay.forEach((dayTasks) => {
+    const done = dayTasks.filter((t) => t.done).length;
+    if (done >= 3) fire += 1;
+    else if (done >= 2) fire += 0.5;
+  });
+
+  const weekHighlights = highlights.length;
+
+  return { income, expense, topExpenses, doneCount, totalCount, fire, weekHighlights, daysActive: byDay.size };
 }

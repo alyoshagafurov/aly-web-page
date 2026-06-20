@@ -5,7 +5,7 @@ import {
   loadInsights, loadBooks, quoteOfDay, paragraphsOf, chapterMinutes,
   CATEGORIES, catMeta, type Insight, type Book,
 } from "@/lib/wisdom";
-import { useReading, useHighlights, useSaved, useSettings } from "@/lib/store";
+import { useReading, useHighlights, useSaved, useSettings, useFocus } from "@/lib/store";
 import { Card, Sheet, CatIcon, ProgressBar, t } from "./ui";
 
 type Route =
@@ -245,9 +245,18 @@ function Detail({ lang, insight, onBack, onReader }: {
   lang: "ru" | "en"; insight: Insight; onBack: () => void; onReader: (id: string) => void;
 }) {
   const { isSaved, toggle } = useSaved();
+  const { addTomorrow } = useFocus();
+  const [goalAdded, setGoalAdded] = useState(false);
   const body = lang === "en" && insight.en ? insight.en : insight.text;
   const meta = catMeta(insight.category);
   const saved = isSaved(insight.id);
+  const shortText = body.length > 60 ? body.slice(0, 57) + "…" : body;
+
+  const handleGoal = () => {
+    addTomorrow(shortText);
+    setGoalAdded(true);
+  };
+
   return (
     <>
       <BackHeader title={meta?.[lang] || ""} onBack={onBack} />
@@ -257,15 +266,22 @@ function Detail({ lang, insight, onBack, onReader }: {
           <p className="text-base text-white/55 mt-6 font-medium">— {insight.author}</p>
           <p className="text-sm text-white/30">{insight.source}</p>
         </div>
-        <div className="flex gap-3 pb-2">
-          <button onClick={() => toggle(insight.id)} className="flex-1 py-3.5 bg-white/[0.06] rounded-2xl font-medium text-[15px] flex items-center justify-center gap-2">
-            <CatIcon name={saved ? "bookmarkFill" : "bookmark"} className="w-4 h-4" /> {saved ? t(lang, "Saved", "Сохранено") : t(lang, "Save", "Сохранить")}
-          </button>
-          {insight.bookId && (
-            <button onClick={() => onReader(insight.bookId!)} className="flex-1 py-3.5 bg-white text-black rounded-2xl font-semibold text-[15px]">
-              {t(lang, "Read the book", "Читать книгу")}
+        <div className="space-y-2.5 pb-2">
+          <div className="flex gap-3">
+            <button onClick={() => toggle(insight.id)} className="flex-1 py-3.5 bg-white/[0.06] rounded-2xl font-medium text-[15px] flex items-center justify-center gap-2">
+              <CatIcon name={saved ? "bookmarkFill" : "bookmark"} className="w-4 h-4" /> {saved ? t(lang, "Saved", "Сохранено") : t(lang, "Save", "Сохранить")}
             </button>
-          )}
+            {insight.bookId && (
+              <button onClick={() => onReader(insight.bookId!)} className="flex-1 py-3.5 bg-white text-black rounded-2xl font-semibold text-[15px]">
+                {t(lang, "Read the book", "Читать книгу")}
+              </button>
+            )}
+          </div>
+          <button onClick={handleGoal} disabled={goalAdded}
+            className={`w-full py-3.5 rounded-2xl font-medium text-[15px] flex items-center justify-center gap-2 transition-colors ${goalAdded ? "bg-white/[0.03] text-white/30" : "bg-white/[0.06] text-white/80"}`}>
+            <CatIcon name="flame" className="w-4 h-4" />
+            {goalAdded ? t(lang, "Added for tomorrow", "Добавлено на завтра") : t(lang, "Goal for tomorrow", "Цель на завтра")}
+          </button>
         </div>
       </div>
     </>
